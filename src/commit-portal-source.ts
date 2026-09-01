@@ -1,4 +1,4 @@
-import { prepareCapture, type BookmarkDraft } from './capture.ts'
+import { prepareCapture, prepareUpdate, type BookmarkDraft } from './capture.ts'
 import {
   parsePortalSource,
   type Catalog,
@@ -15,10 +15,9 @@ import {
 
 export type { PortalRepo }
 
-export type PortalSourceIntent = {
-  kind: 'capture'
-  draft: BookmarkDraft
-}
+export type PortalSourceIntent =
+  | { kind: 'capture'; draft: BookmarkDraft }
+  | { kind: 'update'; boundUrl: string; draft: BookmarkDraft }
 
 export type CommitResult = { ok: true } | { ok: false; error: string }
 
@@ -62,7 +61,25 @@ export async function readPortalSource(
   return { ok: true, catalog: parsed.catalog }
 }
 
-async function applyCapture(
+function prepareIntent(text: string, intent: PortalSourceIntent) {
+  switch (intent.kind) {
+    case 'capture':
+      return prepareCapture(text, [intent.draft])
+    case 'update':
+      return prepareUpdate(text, intent.boundUrl, intent.draft)
+  }
+}
+
+function commitMessage(kind: PortalSourceIntent['kind'], title: string): string {
+  switch (kind) {
+    case 'capture':
+      return `收录: ${title}`
+    case 'update':
+      return `改写: ${title}`
+  }
+}
+
+async function applyIntent(
   gateway: ContentsGateway,
   repo: PortalRepo,
   intent: PortalSourceIntent,
@@ -73,7 +90,7 @@ async function applyCapture(
     return { ok: false, error: '门户源无效，未写入' }
   }
 
-  const prepared = prepareCapture(file.text, [intent.draft])
+  const prepared = prepareIntent(file.text, intent)
   if (!prepared.ok) {
     return { ok: false, error: formatCandidateError(prepared.issues) }
   }
@@ -82,7 +99,7 @@ async function applyCapture(
   const put = await gateway.put({
     ...pathParams(repo),
     sha: file.sha,
-    message: `收录: ${title}`,
+    message: commitMessage(intent.kind, title),
     text: prepared.jsonText,
   })
   if (put.ok) return { ok: true }
@@ -103,7 +120,7 @@ export async function commitPortalSource(
     return { ok: false, error: describeContentsFailure(file.reason, '无法读取门户源') }
   }
 
-  const first = await applyCapture(gateway, repo, intent, file)
+  const first = await applyIntent(gateway, repo, intent, file)
   if (first !== 'conflict') return first
 
   const latest = await gateway.get(pathParams(repo))
@@ -111,7 +128,7 @@ export async function commitPortalSource(
     return { ok: false, error: describeContentsFailure(latest.reason, '无法读取门户源') }
   }
 
-  const second = await applyCapture(gateway, repo, intent, latest)
+  const second = await applyIntent(gateway, repo, intent, latest)
   if (second === 'conflict') {
     return { ok: false, error: describeContentsFailure('conflict', '与其它写入冲突，未覆盖') }
   }

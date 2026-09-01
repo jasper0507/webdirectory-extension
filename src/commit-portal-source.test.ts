@@ -197,6 +197,82 @@ describe('门户源提交', () => {
     expect(gets).toBe(2)
     expect(gateway.puts).toHaveLength(2)
   })
+
+  it('改写绑定槽，保持目录位置且不新增', async () => {
+    const current = portalSource([
+      { title: '先', url: 'https://first.example/', tags: ['工具'] },
+      {
+        title: '中',
+        url: 'https://mid.example/',
+        tags: ['文档'],
+        description: '旧说明',
+      },
+      { title: '后', url: 'https://last.example/', tags: ['参考'] },
+    ])
+    const gateway = fakeGithub({
+      get: () => ({ ok: true, sha: 'sha-1', text: current }),
+      put: () => ({ ok: true, sha: 'sha-2' }),
+    })
+
+    const result = await commitPortalSource(gateway, repo, {
+      kind: 'update',
+      boundUrl: 'HTTPS://MID.EXAMPLE/#old',
+      draft: {
+        title: ' 中间改写 ',
+        url: 'https://mid-new.example/',
+        tags: ['笔记'],
+        description: '新说明',
+      },
+    })
+
+    expect(result).toEqual({ ok: true })
+    expect(gateway.puts).toHaveLength(1)
+    const written = gateway.puts[0]
+    expect(written?.sha).toBe('sha-1')
+    expect(written?.message).toBe('改写: 中间改写')
+    const body = JSON.parse(written?.text ?? '') as {
+      identity: unknown
+      bookmarks: Array<{ title: string; url: string; tags: string[]; description?: string }>
+    }
+    expect(body.identity).toEqual(identity)
+    expect(body.bookmarks).toEqual([
+      { title: '先', url: 'https://first.example/', tags: ['工具'] },
+      {
+        title: '中间改写',
+        url: 'https://mid-new.example/',
+        tags: ['笔记'],
+        description: '新说明',
+      },
+      { title: '后', url: 'https://last.example/', tags: ['参考'] },
+    ])
+    expect(parsePortalSource(written?.text ?? '').ok).toBe(true)
+  })
+
+  it('改写与其它条目冲突则拒绝，不合并', async () => {
+    const current = portalSource([
+      { title: '先', url: 'https://first.example/', tags: ['工具'] },
+      { title: '中', url: 'https://mid.example/', tags: ['文档'] },
+    ])
+    const gateway = fakeGithub({
+      get: () => ({ ok: true, sha: 'sha-1', text: current }),
+    })
+
+    const duplicateTitle = await commitPortalSource(gateway, repo, {
+      kind: 'update',
+      boundUrl: 'https://mid.example/',
+      draft: { title: '先', url: 'https://mid.example/', tags: ['文档'] },
+    })
+    expect(duplicateTitle).toEqual({ ok: false, error: '标题与其它书签重复' })
+    expect(gateway.puts).toHaveLength(0)
+
+    const duplicateUrl = await commitPortalSource(gateway, repo, {
+      kind: 'update',
+      boundUrl: 'https://mid.example/',
+      draft: { title: '中', url: 'https://first.example/#other', tags: ['文档'] },
+    })
+    expect(duplicateUrl).toEqual({ ok: false, error: '地址与其它书签重复' })
+    expect(gateway.puts).toHaveLength(0)
+  })
 })
 
 describe('读取门户源', () => {

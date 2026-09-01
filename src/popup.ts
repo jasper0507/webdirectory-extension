@@ -26,6 +26,7 @@ import {
 const gate = element('gate', HTMLElement)
 const goOptions = element('go-options', HTMLButtonElement)
 const capture = element('capture', HTMLFormElement)
+const modeEl = element('mode', HTMLElement)
 const tagColumn = element('tag-column', HTMLElement)
 const tagsEl = element('tags', HTMLUListElement)
 const tagAdd = element('tag-add', HTMLButtonElement)
@@ -49,6 +50,7 @@ let portalRepo: PortalRepo | null = null
 let tagSelection: TagSelection = createTagSelection({ selected: [], catalog: [] })
 let catalogReady = false
 let busy = false
+let boundUrl: string | null = null
 
 goOptions.addEventListener('click', () => {
   chrome.runtime.openOptionsPage()
@@ -127,7 +129,6 @@ async function boot(): Promise<void> {
     ])
     titleInput.value = page.title
     urlInput.value = page.url
-    bindDescription(page.description)
     if (page.favIconUrl) {
       const icon = document.createElement('img')
       icon.alt = ''
@@ -138,19 +139,28 @@ async function boot(): Promise<void> {
       faviconSlot.append(icon)
     }
     if (!loaded.ok) {
+      bindDescription(page.description)
       setStatus(loaded.error, 'error')
       return
     }
     const bound = findBoundEntry(loaded.catalog, urlInput.value)
     catalogReady = true
-    commitTagSelection(
-      bound
-        ? createTagSelection({
-            selected: bound.tags,
-            catalog: loaded.catalog.tags,
-          })
-        : withCatalog(tagSelection, loaded.catalog.tags),
-    )
+    if (bound) {
+      boundUrl = bound.url
+      modeEl.textContent = '改写'
+      titleInput.value = bound.title
+      urlInput.value = bound.url
+      bindDescription(bound.description ?? '')
+      commitTagSelection(
+        createTagSelection({
+          selected: bound.tags,
+          catalog: loaded.catalog.tags,
+        }),
+      )
+    } else {
+      bindDescription(page.description)
+      commitTagSelection(withCatalog(tagSelection, loaded.catalog.tags))
+    }
   } catch {
     setStatus('无法读取当前页或门户源', 'error')
   }
@@ -162,18 +172,25 @@ async function onSave(): Promise<void> {
   syncSave()
   setStatus('', 'pending')
   const description = descriptionInput.value.trim()
+  const draft = {
+    title: titleInput.value,
+    url: urlInput.value,
+    tags: tagSelection.selected,
+    ...(description ? { description } : {}),
+  }
   try {
-    const result = await commitPortalSource(gateway, portalRepo, {
-      kind: 'capture',
-      draft: {
-        title: titleInput.value,
-        url: urlInput.value,
-        tags: tagSelection.selected,
-        ...(description ? { description } : {}),
-      },
-    })
+    const result = await commitPortalSource(
+      gateway,
+      portalRepo,
+      boundUrl
+        ? { kind: 'update', boundUrl, draft }
+        : { kind: 'capture', draft },
+    )
     if (result.ok) {
-      setStatus('已收录', 'ok')
+      const updating = boundUrl !== null
+      boundUrl = urlInput.value
+      modeEl.textContent = '改写'
+      setStatus(updating ? '已改写' : '已收录', 'ok')
     } else {
       setStatus(result.error, 'error')
     }

@@ -1,4 +1,5 @@
 import {
+  findBoundEntry,
   parsePortalSource,
   summarizeEntryTags,
   type BookmarkEntry,
@@ -26,6 +27,19 @@ function sourceEntry(entry: BookmarkEntry): BookmarkDraft {
   }
 }
 
+function boundEntryMissing(): CapturePreparation {
+  return {
+    ok: false,
+    issues: [
+      {
+        path: '/bookmarks',
+        code: 'missing-field',
+        message: '找不到要改写的书签。',
+      },
+    ],
+  }
+}
+
 export function prepareCapture(
   currentJson: string,
   drafts: BookmarkDraft[],
@@ -48,6 +62,40 @@ export function prepareCapture(
       2,
     )}\n`,
     entries,
+    tags: summarizeEntryTags(candidate.catalog.entries),
+  }
+}
+
+export function prepareUpdate(
+  currentJson: string,
+  boundUrl: string,
+  draft: BookmarkDraft,
+): CapturePreparation {
+  const current = parsePortalSource(currentJson)
+  if (!current.ok) return current
+
+  const bound = findBoundEntry(current.catalog, boundUrl)
+  if (!bound) return boundEntryMissing()
+
+  const index = current.catalog.entries.indexOf(bound)
+  const source = JSON.parse(currentJson) as { identity: unknown; bookmarks: unknown[] }
+  const candidateBookmarks = [...source.bookmarks]
+  candidateBookmarks[index] = draft
+  const candidate = parsePortalSource(
+    JSON.stringify({ ...source, bookmarks: candidateBookmarks }),
+  )
+  if (!candidate.ok) return candidate
+
+  const updated = candidate.catalog.entries[index]
+  if (!updated) return boundEntryMissing()
+
+  const entry = sourceEntry(updated)
+  const bookmarks = [...source.bookmarks]
+  bookmarks[index] = entry
+  return {
+    ok: true,
+    jsonText: `${JSON.stringify({ ...source, bookmarks }, null, 2)}\n`,
+    entries: [entry],
     tags: summarizeEntryTags(candidate.catalog.entries),
   }
 }
