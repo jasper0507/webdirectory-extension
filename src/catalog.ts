@@ -413,7 +413,7 @@ export function parsePortalSource(jsonText: string): ParseResult {
     catalog: {
       identity,
       entries,
-      tags: summarizeTags(entries),
+      tags: summarizeEntryTags(entries),
     },
   }
 }
