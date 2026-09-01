@@ -18,11 +18,14 @@ coverage/
 .DS_Store
 Thumbs.db
 
-# 本地会话：设计工作区、浏览器快照、agent 操作说明（不随 fork 走）
+# 内部设计与本地会话（不随 fork 走）
 .impeccable/
 .playwright-cli/
 AGENTS.md
+CONTEXT.md
+PRODUCT.md
 docs/agents/
+docs/adr/
 
 # 旧 web-ext / Firefox 残留
 web-ext-artifacts/
