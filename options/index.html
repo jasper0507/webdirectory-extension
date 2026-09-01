@@ -1,15 +1,85 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Linkding Extension Options</title>
-    <link rel="stylesheet" href="../styles/theme-light.css" media="(prefers-color-scheme: light)">
-    <link rel="stylesheet" href="../styles/theme-dark.css" media="(prefers-color-scheme: dark)">
-    <link rel="stylesheet" href="../styles/index.css">
-</head>
-<body>
-<ld-options></ld-options>
-<script src="../build/bundle.js"></script>
-</body>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>门户收录选项</title>
+    <link rel="stylesheet" href="../styles/paper.css" />
+  </head>
+  <body class="options">
+    <!--
+      THESIS: 选项是同一张纸上的配置表，不是另一套设置皮肤。
+      OWN-WORLD: 白日档案纸、底边金线输入、无填充主按钮。
+      STORY: 填 owner、仓库、凭证和默认标签；GET 门户源成功才能落下配置。
+      FIRST VIEWPORT: 题名与一句说明，随后四条底边字段，保存在右下。
+      FORM: Raindrop 结构的纸面控件延伸到选项；brief-pinned。
+      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
+    -->
+    <main class="options-sheet">
+      <h1>门户收录</h1>
+      <p class="lede">
+        把当前页写入你自己的门户源仓库。保存前会读取
+        <code>public/portal.json</code> 测连通。
+      </p>
+      <form id="options-form">
+        <div class="field">
+          <label for="owner">所有者</label>
+          <input
+            class="field-line"
+            id="owner"
+            name="owner"
+            type="text"
+            spellcheck="false"
+            autocomplete="username"
+            required
+          />
+        </div>
+        <div class="field">
+          <label for="repo">仓库</label>
+          <input
+            class="field-line"
+            id="repo"
+            name="repo"
+            type="text"
+            spellcheck="false"
+            autocomplete="off"
+            required
+          />
+        </div>
+        <div class="field">
+          <label for="credential">凭证</label>
+          <input
+            class="field-line"
+            id="credential"
+            name="credential"
+            type="password"
+            autocomplete="off"
+            spellcheck="false"
+            required
+          />
+          <p class="hint">
+            使用针对该仓库 Contents
+            读写权限的细粒度个人访问令牌。凭证只存在本机，不会同步到浏览器账号。
+          </p>
+        </div>
+        <div class="field">
+          <label for="default-tags">默认标签</label>
+          <input
+            class="field-line"
+            id="default-tags"
+            name="defaultTags"
+            type="text"
+            spellcheck="false"
+            autocomplete="off"
+          />
+          <p class="hint">新收录预填，中英文逗号分隔。出厂为「其他」，可改可清空。</p>
+        </div>
+        <div class="options-actions">
+          <p id="status" role="status" aria-live="polite"></p>
+          <button type="submit" class="text-action" id="save">保存</button>
+        </div>
+      </form>
+    </main>
+    <script src="../build/options.js"></script>
+  </body>
 </html>

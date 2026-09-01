@@ -1,15 +1,64 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Linkding Extension Popup</title>
-    <link rel="stylesheet" href="../styles/theme-light.css" media="(prefers-color-scheme: light)">
-    <link rel="stylesheet" href="../styles/theme-dark.css" media="(prefers-color-scheme: dark)">
-    <link rel="stylesheet" href="../styles/index.css">
-</head>
-<body>
-<ld-popup></ld-popup>
-<script src="../build/bundle.js"></script>
-</body>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>门户收录</title>
+    <link rel="stylesheet" href="../styles/paper.css" />
+  </head>
+  <body class="popup">
+    <!--
+      THESIS: 收录窗按 Raindrop 的左右结构排，拒绝堆叠表单和蓝填充按钮。
+      OWN-WORLD: 白日档案纸、墨与灰；金只作线、点、环与焦点；系统无衬线。
+      STORY: 未配置只剩一句话和「去选项」；配好后标题是主信息，标签在左，保存右下。
+      FIRST VIEWPORT: 顶栏「收录」；左列短标签；右列站点图标与标题、次行描述、退后的 URL；右下「保存」。
+      FORM: Raindrop 结构 + Archive Paper，brief-pinned，未跑 concept-seed。
+      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
+    -->
+    <section id="gate" class="gate" hidden>
+      <p>先在选项里填写仓库和凭证，才能把当前页写进门户源。</p>
+      <button type="button" class="text-action" id="go-options">去选项</button>
+    </section>
+    <form id="capture" class="capture" hidden>
+      <header class="mode" id="mode">收录</header>
+      <div class="capture-grid">
+        <ul class="tags" id="tags"></ul>
+        <div class="main">
+          <div class="title-row">
+            <span class="favicon-slot" id="favicon-slot"></span>
+            <input
+              id="title"
+              name="title"
+              aria-label="标题"
+              spellcheck="false"
+              autocomplete="off"
+            />
+          </div>
+          <button type="button" class="desc-toggle" id="desc-toggle">
+            添加描述
+          </button>
+          <textarea
+            id="description"
+            name="description"
+            aria-label="描述"
+            rows="3"
+            hidden
+          ></textarea>
+          <input
+            id="url"
+            name="url"
+            aria-label="URL"
+            spellcheck="false"
+            autocomplete="off"
+          />
+        </div>
+      </div>
+      <footer class="actions">
+        <button type="submit" class="text-action save" id="save" disabled>
+          保存
+        </button>
+      </footer>
+    </form>
+    <script src="../build/popup.js"></script>
+  </body>
 </html>

@@ -1,51 +1,34 @@
-# linkding extension
+# 门户收录
 
-Companion extension for the self-hosted [linkding](https://github.com/sissbruecker/linkding) bookmark service.
+Chrome 扩展：在浏览时把当前页作为书签条目写入门户源（目标仓库默认分支上的 `public/portal.json`）。
 
-**Features**
-- Quickly add a bookmark for the current tab (keyboard shortcut: <kbd>Alt</kbd><kbd>Shift</kbd><kbd>L</kbd>)
-- Search bookmarks through the Omnibox / address bar (keyword: <kbd>ld</kbd>)
+第一版只支持 Chrome 解包加载，不上架，不做 Firefox。
 
-Works with: Firefox, Chrome
+## 加载
 
-**Screenshot**
+需要 Node 的当前 LTS。
 
-![Screenshot](/docs/screenshot.png?raw=true "Screenshot")
-
-## Installation
-
-Firefox: [Mozilla Addon Store](https://addons.mozilla.org/firefox/addon/linkding-extension/)
-
-Chrome: [Chrome Web Store](https://chrome.google.com/webstore/detail/linkding-extension/beakmhbijpdhipnjhnclmhgjlddhidpe) 
-
-## Manual installation
-
-### Firefox
-
-Run the build as described below and then follow the instructions [here](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Your_first_WebExtension#installing) to load it into Firefox.
-
-### Chrome
-
-Run the build as described below from the `chrome` branch and then follow the instructions [here](https://developer.chrome.com/docs/extensions/mv3/getstarted/#manifest) to load it into Chrome.
-
-## Build
-
-**Requirements**
-- Latest LTS Node version
-- Latest LTS NPM version
-- bash
-- zip
-
-Run the following bash script to generate a build (might need to make the file executable using `chmod +x build.sh`):
-```
-./build.sh
+```bash
+npm install
+npm test
+npm run build
 ```
 
-The script does:
-- Install all dependencies using NPM
-- Runs rollup to transpile and minify source files, with output written to `build`
-- Packages the extension contents into a zip file in the `dist` folder
+然后打开 `chrome://extensions`，打开「开发者模式」，「加载已解压的扩展程序」，选本仓库根目录（含 `manifest.json` 的那一层）。
 
-After the build, the root directory contains the complete, unpackaged extension. Use the `manifest.json` file to load it manually into the browser.
+快捷键默认建议为 <kbd>Alt</kbd><kbd>Shift</kbd><kbd>L</kbd>，用于打开 Popup。
 
-The packaged extension can be found in the `dist` folder.
+## 选项
+
+在扩展选项里填写：
+
+- GitHub **owner**
+- **仓库**名
+- **凭证**：针对该仓库 Contents **读写**权限的细粒度个人访问令牌（PAT）
+- **默认标签**：新收录预填，中英文逗号分隔；出厂为「其他」，可改可清空
+
+保存前扩展会 GET `public/portal.json` 测连通。连通失败不会写下配置。凭证只进入 `chrome.storage.local`，不随浏览器账号同步。
+
+细粒度 PAT 的最小范围：只授权这一个仓库，Contents 读与写。不要用过宽的 classic PAT。
+
+尚未填写仓库和凭证时，Popup 只有一句话和「去选项」。

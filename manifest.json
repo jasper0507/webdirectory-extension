@@ -1,52 +1,35 @@
 {
-  "manifest_version": 2,
-  "name": "linkding extension",
-  "version": "1.15.1",
-  "description": "Companion extension for the linkding bookmark service",
-  "homepage_url": "https://github.com/sissbruecker/linkding-extension/",
-
+  "manifest_version": 3,
+  "name": "门户收录",
+  "version": "0.1.0",
+  "description": "把当前页作为书签条目写入门户源",
+  "homepage_url": "https://github.com/jasper0507/webdirectory-extension",
   "icons": {
-    "48": "icons/logo_48x48.png",
-    "96": "icons/logo_96x96.png",
-    "128": "icons/logo_128x128.png"
+    "16": "icons/ring-16.png",
+    "32": "icons/ring-32.png",
+    "48": "icons/ring-48.png",
+    "128": "icons/ring-128.png"
   },
-
-  "background": {
-    "scripts": ["build/background.js"]
-  },
-
-  "omnibox": {
-    "keyword": "ld"
-  },
-
-  "browser_action": {
+  "action": {
+    "default_title": "门户收录",
+    "default_popup": "popup/index.html",
     "default_icon": {
-      "19": "icons/button_19x19.png",
-      "32": "icons/button_32x32.png",
-      "38": "icons/button_38x38.png"
-    },
-    "default_title": "Add bookmark (Alt+Shift+L)",
-    "default_popup": "popup/index.html"
+      "16": "icons/ring-16.png",
+      "32": "icons/ring-32.png"
+    }
   },
-
+  "options_ui": {
+    "page": "options/index.html",
+    "open_in_tab": true
+  },
   "commands": {
-    "_execute_browser_action": {
+    "_execute_action": {
       "suggested_key": {
         "default": "Alt+Shift+L"
       },
-      "description": "Open a popup to bookmark current page."
+      "description": "打开门户收录"
     }
   },
-
-  "options_ui": {
-    "page": "options/index.html"
-  },
-
-  "permissions": [
-    "tabs",
-    "storage",
-    "contextMenus",
-    "http://*/*",
-    "https://*/*"
-  ]
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["https://api.github.com/*"]
 }

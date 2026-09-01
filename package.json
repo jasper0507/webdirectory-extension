@@ -1,29 +1,21 @@
 {
-  "name": "linkding-extension",
-  "version": "1.15.1",
-  "description": "Companion extension for the linkding bookmark service",
+  "name": "webdirectory-extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "门户收录：把当前页写入门户源",
   "license": "MIT",
-  "author": "Sascha Ißbrücker",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/sissbruecker/linkding-extension.git"
-  },
-  "bugs": {
-    "url": "https://github.com/sissbruecker/linkding-extension/issues"
-  },
-  "homepage": "https://github.com/sissbruecker/linkding-extension#readme",
+  "type": "module",
   "scripts": {
-    "build": "rollup -c",
-    "dev": "rollup -c -w",
-    "format": "prettier --write \"src/**/*.js\""
-  },
-  "dependencies": {
-    "lit": "^3.3.1"
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@rollup/plugin-node-resolve": "^16.0.1",
-    "@rollup/plugin-terser": "^0.4.4",
-    "prettier": "^3.6.2",
-    "rollup": "^4.49.0"
+    "@types/chrome": "^0.1.4",
+    "esbuild": "^0.25.9",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
   }
 }
