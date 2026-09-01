@@ -19,7 +19,7 @@ const capture = element('capture', HTMLFormElement)
 const tagsEl = element('tags', HTMLUListElement)
 const faviconSlot = element('favicon-slot', HTMLElement)
 const titleInput = element('title', HTMLInputElement)
-const descToggle = element('desc-toggle', HTMLButtonElement)
+const descLine = element('desc-line', HTMLButtonElement)
 const descriptionInput = element('description', HTMLTextAreaElement)
 const urlInput = element('url', HTMLInputElement)
 const saveButton = element('save', HTMLButtonElement)
@@ -145,9 +145,9 @@ function renderTags(tags: string[]): void {
 
 function bindDescription(initial: string): void {
   descriptionInput.value = initial
-  descToggle.textContent = initial || '添加描述'
-  descToggle.addEventListener('click', () => {
-    descToggle.hidden = true
+  descLine.textContent = initial || '添加描述'
+  descLine.addEventListener('click', () => {
+    descLine.hidden = true
     descriptionInput.hidden = false
     descriptionInput.focus()
   })
