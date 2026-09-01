@@ -19,7 +19,7 @@ export type PortalSourceIntent =
   | { kind: 'capture'; draft: BookmarkDraft }
   | { kind: 'update'; boundUrl: string; draft: BookmarkDraft }
 
-export type CommitResult = { ok: true } | { ok: false; error: string }
+export type CommitResult = { ok: true; url: string } | { ok: false; error: string }
 
 export type ReadPortalSourceResult =
   | { ok: true; catalog: Catalog }
@@ -95,14 +95,18 @@ async function applyIntent(
     return { ok: false, error: formatCandidateError(prepared.issues) }
   }
 
-  const title = prepared.entries[0]?.title ?? intent.draft.title
+  const written = prepared.entries[0]
+  if (!written) {
+    return { ok: false, error: '门户源无效，未写入' }
+  }
+
   const put = await gateway.put({
     ...pathParams(repo),
     sha: file.sha,
-    message: commitMessage(intent.kind, title),
+    message: commitMessage(intent.kind, written.title),
     text: prepared.jsonText,
   })
-  if (put.ok) return { ok: true }
+  if (put.ok) return { ok: true, url: written.url }
   if (put.reason === 'conflict') return 'conflict'
   return {
     ok: false,

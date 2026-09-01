@@ -146,8 +146,7 @@ async function boot(): Promise<void> {
     const bound = findBoundEntry(loaded.catalog, urlInput.value)
     catalogReady = true
     if (bound) {
-      boundUrl = bound.url
-      modeEl.textContent = '改写'
+      bindSlot(bound.url)
       titleInput.value = bound.title
       urlInput.value = bound.url
       bindDescription(bound.description ?? '')
@@ -188,8 +187,7 @@ async function onSave(): Promise<void> {
     )
     if (result.ok) {
       const updating = boundUrl !== null
-      boundUrl = urlInput.value
-      modeEl.textContent = '改写'
+      bindSlot(result.url)
       setStatus(updating ? '已改写' : '已收录', 'ok')
     } else {
       setStatus(result.error, 'error')
@@ -280,6 +278,11 @@ function confirmNewTag(): void {
 
 function closeTagMenu(): void {
   setTagMenu('closed')
+}
+
+function bindSlot(url: string): void {
+  boundUrl = url
+  modeEl.textContent = '改写'
 }
 
 function bindDescription(initial: string): void {

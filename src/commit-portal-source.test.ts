@@ -72,7 +72,7 @@ describe('门户源提交', () => {
       },
     })
 
-    expect(result).toEqual({ ok: true })
+    expect(result).toEqual({ ok: true, url: 'https://new.example/' })
     expect(gateway.puts).toHaveLength(1)
     const written = gateway.puts[0]
     expect(written?.sha).toBe('sha-1')
@@ -161,7 +161,7 @@ describe('门户源提交', () => {
       draft: { title: '新增', url: 'https://new.example/', tags: ['文档'] },
     })
 
-    expect(result).toEqual({ ok: true })
+    expect(result).toEqual({ ok: true, url: 'https://new.example/' })
     expect(gateway.puts).toHaveLength(2)
     expect(gateway.puts[0]?.sha).toBe('sha-1')
     expect(gateway.puts[1]?.sha).toBe('sha-2')
@@ -225,7 +225,7 @@ describe('门户源提交', () => {
       },
     })
 
-    expect(result).toEqual({ ok: true })
+    expect(result).toEqual({ ok: true, url: 'https://mid-new.example/' })
     expect(gateway.puts).toHaveLength(1)
     const written = gateway.puts[0]
     expect(written?.sha).toBe('sha-1')

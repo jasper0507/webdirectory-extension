@@ -3,13 +3,15 @@ import {
   parsePortalSource,
   summarizeEntryTags,
   type BookmarkEntry,
+  type Catalog,
+  type ParseResult,
   type PortalSourceIssue,
   type TagSummary,
 } from './catalog.ts'
 
 export type BookmarkDraft = Pick<BookmarkEntry, 'title' | 'url' | 'tags' | 'description'>
 
-export type CapturePreparation =
+export type CandidatePreparation =
   | { ok: false; issues: PortalSourceIssue[] }
   | {
       ok: true
@@ -17,6 +19,11 @@ export type CapturePreparation =
       entries: BookmarkDraft[]
       tags: TagSummary[]
     }
+
+type PortalDocument = {
+  identity: unknown
+  bookmarks: unknown[]
+}
 
 function sourceEntry(entry: BookmarkEntry): BookmarkDraft {
   return {
@@ -27,7 +34,7 @@ function sourceEntry(entry: BookmarkEntry): BookmarkDraft {
   }
 }
 
-function boundEntryMissing(): CapturePreparation {
+function boundEntryMissing(): CandidatePreparation {
   return {
     ok: false,
     issues: [
@@ -40,62 +47,77 @@ function boundEntryMissing(): CapturePreparation {
   }
 }
 
+function loadDocument(currentJson: string):
+  | { ok: false; issues: PortalSourceIssue[] }
+  | { ok: true; catalog: Catalog; document: PortalDocument } {
+  const parsed = parsePortalSource(currentJson)
+  if (!parsed.ok) return parsed
+  return {
+    ok: true,
+    catalog: parsed.catalog,
+    document: JSON.parse(currentJson) as PortalDocument,
+  }
+}
+
+function parseCandidate(document: PortalDocument, bookmarks: unknown[]): ParseResult {
+  return parsePortalSource(JSON.stringify({ ...document, bookmarks }))
+}
+
+function preparedCandidate(
+  document: PortalDocument,
+  bookmarks: unknown[],
+  entries: BookmarkDraft[],
+  catalogEntries: BookmarkEntry[],
+): CandidatePreparation {
+  return {
+    ok: true,
+    jsonText: `${JSON.stringify({ ...document, bookmarks }, null, 2)}\n`,
+    entries,
+    tags: summarizeEntryTags(catalogEntries),
+  }
+}
+
 export function prepareCapture(
   currentJson: string,
   drafts: BookmarkDraft[],
-): CapturePreparation {
-  const current = parsePortalSource(currentJson)
-  if (!current.ok) return current
+): CandidatePreparation {
+  const loaded = loadDocument(currentJson)
+  if (!loaded.ok) return loaded
 
-  const source = JSON.parse(currentJson) as { identity: unknown; bookmarks: unknown[] }
-  const candidate = parsePortalSource(
-    JSON.stringify({ ...source, bookmarks: [...source.bookmarks, ...drafts] }),
-  )
+  const candidate = parseCandidate(loaded.document, [...loaded.document.bookmarks, ...drafts])
   if (!candidate.ok) return candidate
 
-  const entries = candidate.catalog.entries.slice(source.bookmarks.length).map(sourceEntry)
-  return {
-    ok: true,
-    jsonText: `${JSON.stringify(
-      { ...source, bookmarks: [...source.bookmarks, ...entries] },
-      null,
-      2,
-    )}\n`,
+  const entries = candidate.catalog.entries.slice(loaded.document.bookmarks.length).map(sourceEntry)
+  return preparedCandidate(
+    loaded.document,
+    [...loaded.document.bookmarks, ...entries],
     entries,
-    tags: summarizeEntryTags(candidate.catalog.entries),
-  }
+    candidate.catalog.entries,
+  )
 }
 
 export function prepareUpdate(
   currentJson: string,
   boundUrl: string,
   draft: BookmarkDraft,
-): CapturePreparation {
-  const current = parsePortalSource(currentJson)
-  if (!current.ok) return current
+): CandidatePreparation {
+  const loaded = loadDocument(currentJson)
+  if (!loaded.ok) return loaded
 
-  const bound = findBoundEntry(current.catalog, boundUrl)
+  const bound = findBoundEntry(loaded.catalog, boundUrl)
   if (!bound) return boundEntryMissing()
 
-  const index = current.catalog.entries.indexOf(bound)
-  const source = JSON.parse(currentJson) as { identity: unknown; bookmarks: unknown[] }
-  const candidateBookmarks = [...source.bookmarks]
+  const index = loaded.catalog.entries.indexOf(bound)
+  const candidateBookmarks = [...loaded.document.bookmarks]
   candidateBookmarks[index] = draft
-  const candidate = parsePortalSource(
-    JSON.stringify({ ...source, bookmarks: candidateBookmarks }),
-  )
+  const candidate = parseCandidate(loaded.document, candidateBookmarks)
   if (!candidate.ok) return candidate
 
   const updated = candidate.catalog.entries[index]
   if (!updated) return boundEntryMissing()
 
   const entry = sourceEntry(updated)
-  const bookmarks = [...source.bookmarks]
+  const bookmarks = [...loaded.document.bookmarks]
   bookmarks[index] = entry
-  return {
-    ok: true,
-    jsonText: `${JSON.stringify({ ...source, bookmarks }, null, 2)}\n`,
-    entries: [entry],
-    tags: summarizeEntryTags(candidate.catalog.entries),
-  }
+  return preparedCandidate(loaded.document, bookmarks, [entry], candidate.catalog.entries)
 }
