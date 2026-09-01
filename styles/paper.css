@@ -283,8 +283,19 @@ body.popup {
 
 .actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
   margin-top: 1.15rem;
+}
+
+.actions #status {
+  flex: 1;
+  margin: 0;
+}
+
+.actions .save {
+  flex: none;
 }
 
 /* Options */

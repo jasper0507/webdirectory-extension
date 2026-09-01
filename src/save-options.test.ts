@@ -27,11 +27,18 @@ const draft: Configuration = {
   defaultTags: '其他',
 }
 
+function unusedPut(): ContentsGateway['put'] {
+  return async () => {
+    throw new Error('options save must not PUT')
+  }
+}
+
 function okGateway(): ContentsGateway {
   return {
     async get() {
-      return { ok: true, sha: 'sha' }
+      return { ok: true, sha: 'sha', text: '{}' }
     },
+    put: unusedPut(),
   }
 }
 
@@ -42,8 +49,9 @@ describe('保存选项', () => {
     const gateway: ContentsGateway = {
       async get() {
         probed = true
-        return { ok: true, sha: 'sha' }
+        return { ok: true, sha: 'sha', text: '{}' }
       },
+      put: unusedPut(),
     }
     const result = await saveOptions(store, gateway, emptyConfiguration())
     expect(result).toEqual({ ok: false, error: '请填写所有者、仓库和凭证' })
@@ -63,6 +71,7 @@ describe('保存选项', () => {
       async get() {
         return { ok: false, reason: 'unauthorized' }
       },
+      put: unusedPut(),
     }
     const result = await saveOptions(store, gateway, draft)
     expect(result).toEqual({ ok: false, error: '凭证无效或没有仓库权限' })
@@ -75,6 +84,7 @@ describe('保存选项', () => {
       async get() {
         return { ok: false, reason: 'not-found' }
       },
+      put: unusedPut(),
     }
     const result = await saveOptions(store, gateway, draft)
     expect(result).toEqual({ ok: false, error: '找不到仓库或门户源' })

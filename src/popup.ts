@@ -1,9 +1,15 @@
 import { createExtensionStore } from './chrome-store.ts'
 import {
+  commitPortalSource,
+  readPortalSource,
+  type PortalRepo,
+} from './commit-portal-source.ts'
+import {
   isConfigurationComplete,
   parseDefaultTags,
 } from './configuration.ts'
 import { element } from './dom.ts'
+import { createGithubContentsGateway } from './github-contents.ts'
 import { readCurrentPage } from './page.ts'
 
 const gate = element('gate', HTMLElement)
@@ -15,6 +21,15 @@ const titleInput = element('title', HTMLInputElement)
 const descToggle = element('desc-toggle', HTMLButtonElement)
 const descriptionInput = element('description', HTMLTextAreaElement)
 const urlInput = element('url', HTMLInputElement)
+const saveButton = element('save', HTMLButtonElement)
+const statusEl = element('status', HTMLElement)
+
+const gateway = createGithubContentsGateway(fetch)
+
+let portalRepo: PortalRepo | null = null
+let selectedTags: string[] = []
+let catalogReady = false
+let busy = false
 
 goOptions.addEventListener('click', () => {
   chrome.runtime.openOptionsPage()
@@ -22,6 +37,7 @@ goOptions.addEventListener('click', () => {
 
 capture.addEventListener('submit', (event) => {
   event.preventDefault()
+  void onSave()
 })
 
 void boot()
@@ -34,13 +50,21 @@ async function boot(): Promise<void> {
       return
     }
 
+    portalRepo = {
+      owner: config.owner,
+      repo: config.repo,
+      credential: config.credential,
+    }
     capture.hidden = false
     renderTags(parseDefaultTags(config.defaultTags))
 
-    const page = await readCurrentPage({
-      tabs: chrome.tabs,
-      scripting: chrome.scripting,
-    })
+    const [page, loaded] = await Promise.all([
+      readCurrentPage({
+        tabs: chrome.tabs,
+        scripting: chrome.scripting,
+      }),
+      readPortalSource(gateway, portalRepo),
+    ])
     titleInput.value = page.title
     urlInput.value = page.url
     bindDescription(page.description)
@@ -53,12 +77,56 @@ async function boot(): Promise<void> {
       })
       faviconSlot.append(icon)
     }
+    if (!loaded.ok) {
+      setStatus(loaded.error, 'error')
+      return
+    }
+    catalogReady = true
+    syncSave()
   } catch {
     gate.hidden = false
   }
 }
 
+async function onSave(): Promise<void> {
+  if (!portalRepo || !catalogReady || busy) return
+  busy = true
+  syncSave()
+  setStatus('', 'pending')
+  const description = descriptionInput.value.trim()
+  try {
+    const result = await commitPortalSource(gateway, portalRepo, {
+      kind: 'capture',
+      draft: {
+        title: titleInput.value,
+        url: urlInput.value,
+        tags: selectedTags,
+        ...(description ? { description } : {}),
+      },
+    })
+    if (result.ok) {
+      setStatus('已收录', 'ok')
+    } else {
+      setStatus(result.error, 'error')
+    }
+  } catch {
+    setStatus('写入失败', 'error')
+  }
+  busy = false
+  syncSave()
+}
+
+function syncSave(): void {
+  saveButton.disabled = !catalogReady || busy
+}
+
+function setStatus(text: string, state: 'ok' | 'error' | 'pending'): void {
+  statusEl.textContent = text
+  statusEl.dataset.state = state
+}
+
 function renderTags(tags: string[]): void {
+  selectedTags = [...tags]
   tagsEl.replaceChildren()
   for (const tag of tags) {
     const item = document.createElement('li')

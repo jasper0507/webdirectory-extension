@@ -12,12 +12,19 @@ function jsonResponse(status: number, body: unknown): Response {
   })
 }
 
+const repo = {
+  owner: 'acme',
+  repo: 'webdirectory',
+  credential: 'pat-1',
+}
+
 describe('门户源连通', () => {
   it('路径固定为 public/portal.json', () => {
     expect(PORTAL_SOURCE_PATH).toBe('public/portal.json')
   })
 
-  it('GET 门户源成功则返回 sha', async () => {
+  it('GET 门户源成功则返回 sha 与解码后的正文', async () => {
+    const text = '{"identity":{"wordmark":"试厅"},"bookmarks":[]}'
     const fetchImpl: typeof fetch = async (input, init) => {
       expect(String(input)).toBe(
         'https://api.github.com/repos/acme/webdirectory/contents/public/portal.json',
@@ -25,16 +32,23 @@ describe('门户源连通', () => {
       const headers = new Headers(init?.headers)
       expect(headers.get('Authorization')).toBe('Bearer pat-1')
       expect(headers.get('Accept')).toBe('application/vnd.github+json')
-      return jsonResponse(200, { sha: 'abc123', content: 'e30=', encoding: 'base64' })
+      expect(init?.method ?? 'GET').toBe('GET')
+      return jsonResponse(200, {
+        sha: 'abc123',
+        content: Buffer.from(text, 'utf8').toString('base64'),
+        encoding: 'base64',
+      })
     }
     const gateway = createGithubContentsGateway(fetchImpl)
-    await expect(
-      probePortalSource(gateway, {
-        owner: 'acme',
-        repo: 'webdirectory',
-        credential: 'pat-1',
-      }),
-    ).resolves.toEqual({ ok: true, sha: 'abc123' })
+    await expect(gateway.get({ ...repo, path: PORTAL_SOURCE_PATH })).resolves.toEqual({
+      ok: true,
+      sha: 'abc123',
+      text,
+    })
+    await expect(probePortalSource(gateway, repo)).resolves.toEqual({
+      ok: true,
+      sha: 'abc123',
+    })
   })
 
   it('401 或 403 视为凭证无效', async () => {
@@ -70,5 +84,52 @@ describe('门户源连通', () => {
         credential: 'pat-1',
       }),
     ).resolves.toEqual({ ok: false, reason: 'network' })
+  })
+})
+
+describe('门户源写入', () => {
+  it('PUT 发送提交说明、sha 与 UTF-8 正文', async () => {
+    const text = '{"identity":{"wordmark":"试厅"},"bookmarks":[]}\n'
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(String(input)).toBe(
+        'https://api.github.com/repos/acme/webdirectory/contents/public/portal.json',
+      )
+      expect(init?.method).toBe('PUT')
+      const headers = new Headers(init?.headers)
+      expect(headers.get('Authorization')).toBe('Bearer pat-1')
+      expect(headers.get('Accept')).toBe('application/vnd.github+json')
+      const body = JSON.parse(String(init?.body)) as {
+        message: string
+        content: string
+        sha: string
+      }
+      expect(body.message).toBe('收录: 试厅')
+      expect(body.sha).toBe('abc123')
+      expect(Buffer.from(body.content, 'base64').toString('utf8')).toBe(text)
+      return jsonResponse(200, { content: { sha: 'def456' } })
+    }
+    const gateway = createGithubContentsGateway(fetchImpl)
+    await expect(
+      gateway.put({
+        ...repo,
+        path: PORTAL_SOURCE_PATH,
+        sha: 'abc123',
+        message: '收录: 试厅',
+        text,
+      }),
+    ).resolves.toEqual({ ok: true, sha: 'def456' })
+  })
+
+  it('PUT 409 视为 sha 冲突', async () => {
+    const gateway = createGithubContentsGateway(async () => jsonResponse(409, {}))
+    await expect(
+      gateway.put({
+        ...repo,
+        path: PORTAL_SOURCE_PATH,
+        sha: 'stale',
+        message: '收录: 新增',
+        text: '{}',
+      }),
+    ).resolves.toEqual({ ok: false, reason: 'conflict' })
   })
 })
