@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { parsePortalSource, summarizeEntryTags, type BookmarkEntry } from './catalog.ts'
+import {
+  findBoundEntry,
+  parsePortalSource,
+  summarizeEntryTags,
+  type BookmarkEntry,
+} from './catalog.ts'
 import {
   sampleIdentity as identity,
   samplePortalSource as portalSource,
@@ -112,6 +117,22 @@ describe('parsePortalSource', () => {
         code: 'invalid-value',
       }),
     )
+  })
+})
+
+describe('findBoundEntry', () => {
+  it('按标准化 URL 找到目录里的绑定条目', () => {
+    const parsed = parsePortalSource(
+      portalSource([
+        { title: '已有', url: 'https://old.example/', tags: ['工具'] },
+        { title: '另一条', url: 'https://other.example/path/#skip', tags: ['文档'] },
+      ]),
+    )
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+    expect(findBoundEntry(parsed.catalog, 'HTTPS://OLD.EXAMPLE/#top')?.title).toBe('已有')
+    expect(findBoundEntry(parsed.catalog, 'https://other.example/path')?.tags).toEqual(['文档'])
+    expect(findBoundEntry(parsed.catalog, 'https://missing.example/')).toBeUndefined()
   })
 })
 

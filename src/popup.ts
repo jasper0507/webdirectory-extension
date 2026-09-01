@@ -1,3 +1,4 @@
+import { findBoundEntry, normalizeTag, summarizeEntryTags } from './catalog.ts'
 import { createExtensionStore } from './chrome-store.ts'
 import {
   commitPortalSource,
@@ -12,11 +13,28 @@ import {
 import { element } from './dom.ts'
 import { createGithubContentsGateway } from './github-contents.ts'
 import { readCurrentPage } from './page.ts'
+import {
+  addTag,
+  availableTags,
+  createTagSelection,
+  removeTag,
+  revealChoices,
+  withCatalog,
+  type TagSelection,
+} from './tag-selection.ts'
 
 const gate = element('gate', HTMLElement)
 const goOptions = element('go-options', HTMLButtonElement)
 const capture = element('capture', HTMLFormElement)
 const tagsEl = element('tags', HTMLUListElement)
+const tagPicker = element('tag-picker', HTMLElement)
+const tagAdd = element('tag-add', HTMLButtonElement)
+const tagMenu = element('tag-menu', HTMLElement)
+const tagChoices = element('tag-choices', HTMLUListElement)
+const tagCreateOpen = element('tag-create-open', HTMLButtonElement)
+const tagCreate = element('tag-create', HTMLElement)
+const tagCreateName = element('tag-create-name', HTMLInputElement)
+const tagCreateConfirm = element('tag-create-confirm', HTMLButtonElement)
 const faviconSlot = element('favicon-slot', HTMLElement)
 const titleInput = element('title', HTMLInputElement)
 const descLine = element('desc-line', HTMLButtonElement)
@@ -28,7 +46,7 @@ const statusEl = element('status', HTMLElement)
 const gateway = createGithubContentsGateway(fetch)
 
 let portalRepo: PortalRepo | null = null
-let selectedTags: string[] = []
+let tags: TagSelection = createTagSelection({ selected: [], catalog: [] })
 let catalogReady = false
 let busy = false
 
@@ -39,6 +57,35 @@ goOptions.addEventListener('click', () => {
 capture.addEventListener('submit', (event) => {
   event.preventDefault()
   void onSave()
+})
+
+tagAdd.addEventListener('click', () => {
+  if (tagMenu.hidden) openTagMenu()
+  else closeTagMenu()
+})
+
+tagCreateOpen.addEventListener('click', () => {
+  showTagCreate()
+})
+
+tagCreateConfirm.addEventListener('click', () => {
+  confirmNewTag()
+})
+
+tagCreateName.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    confirmNewTag()
+  }
+})
+
+document.addEventListener('click', (event) => {
+  if (!(event.target instanceof Node) || tagPicker.contains(event.target)) return
+  closeTagMenu()
+})
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeTagMenu()
 })
 
 void boot()
@@ -62,7 +109,12 @@ async function boot(): Promise<void> {
     credential: config.credential,
   }
   capture.hidden = false
-  renderTags(parseDefaultTags(config.defaultTags))
+  tags = createTagSelection({
+    selected: parseDefaultTags(config.defaultTags),
+    catalog: [],
+    prefill: true,
+  })
+  renderSelectedTags()
 
   try {
     const [page, loaded] = await Promise.all([
@@ -88,7 +140,16 @@ async function boot(): Promise<void> {
       setStatus(loaded.error, 'error')
       return
     }
+    const catalogTags = summarizeEntryTags(loaded.catalog.entries)
+    const bound = findBoundEntry(loaded.catalog, urlInput.value)
+    tags = bound
+      ? createTagSelection({
+          selected: bound.tags,
+          catalog: catalogTags,
+        })
+      : withCatalog(tags, catalogTags)
     catalogReady = true
+    renderSelectedTags()
     syncSave()
   } catch {
     setStatus('无法读取当前页或门户源', 'error')
@@ -96,7 +157,7 @@ async function boot(): Promise<void> {
 }
 
 async function onSave(): Promise<void> {
-  if (!portalRepo || !catalogReady || busy) return
+  if (!portalRepo || !catalogReady || busy || tags.selected.length === 0) return
   busy = true
   syncSave()
   setStatus('', 'pending')
@@ -107,7 +168,7 @@ async function onSave(): Promise<void> {
       draft: {
         title: titleInput.value,
         url: urlInput.value,
-        tags: selectedTags,
+        tags: tags.selected,
         ...(description ? { description } : {}),
       },
     })
@@ -124,7 +185,7 @@ async function onSave(): Promise<void> {
 }
 
 function syncSave(): void {
-  saveButton.disabled = !catalogReady || busy
+  saveButton.disabled = !catalogReady || busy || tags.selected.length === 0
 }
 
 function setStatus(text: string, state: 'ok' | 'error' | 'pending'): void {
@@ -132,15 +193,86 @@ function setStatus(text: string, state: 'ok' | 'error' | 'pending'): void {
   statusEl.dataset.state = state
 }
 
-function renderTags(tags: string[]): void {
-  selectedTags = [...tags]
+function renderSelectedTags(): void {
   tagsEl.replaceChildren()
-  for (const tag of tags) {
+  for (const name of tags.selected) {
     const item = document.createElement('li')
-    item.className = 'tag'
-    item.textContent = tag
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'tag'
+    button.textContent = name
+    button.setAttribute('aria-label', `去掉 ${name}`)
+    button.addEventListener('click', () => {
+      tags = removeTag(tags, name)
+      renderSelectedTags()
+      if (!tagMenu.hidden && tagCreate.hidden) renderTagChoices()
+      syncSave()
+    })
+    item.append(button)
     tagsEl.append(item)
   }
+}
+
+function renderTagChoices(): void {
+  tagChoices.replaceChildren()
+  for (const tag of availableTags(tags)) {
+    const item = document.createElement('li')
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'tag-choice'
+    button.setAttribute('role', 'option')
+    button.textContent = tag.name
+    button.addEventListener('click', () => {
+      tags = addTag(tags, tag.name)
+      closeTagMenu()
+      renderSelectedTags()
+      syncSave()
+    })
+    item.append(button)
+    tagChoices.append(item)
+  }
+}
+
+function openTagMenu(): void {
+  tags = revealChoices(tags)
+  renderSelectedTags()
+  syncSave()
+  tagChoices.hidden = false
+  tagCreateOpen.hidden = false
+  tagCreate.hidden = true
+  tagCreateName.value = ''
+  renderTagChoices()
+  tagMenu.hidden = false
+  tagAdd.setAttribute('aria-expanded', 'true')
+}
+
+function showTagCreate(): void {
+  tags = revealChoices(tags)
+  renderSelectedTags()
+  syncSave()
+  tagChoices.hidden = true
+  tagCreateOpen.hidden = true
+  tagCreate.hidden = false
+  tagCreateName.value = ''
+  tagCreateName.focus()
+}
+
+function confirmNewTag(): void {
+  const name = normalizeTag(tagCreateName.value)
+  if (!name) return
+  tags = addTag(tags, name)
+  closeTagMenu()
+  renderSelectedTags()
+  syncSave()
+}
+
+function closeTagMenu(): void {
+  tagMenu.hidden = true
+  tagChoices.hidden = false
+  tagCreateOpen.hidden = false
+  tagCreate.hidden = true
+  tagCreateName.value = ''
+  tagAdd.setAttribute('aria-expanded', 'false')
 }
 
 function bindDescription(initial: string): void {

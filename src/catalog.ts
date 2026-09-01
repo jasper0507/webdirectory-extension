@@ -66,7 +66,7 @@ function normalizeTitle(title: string): string {
   return title.trim().normalize(TITLE_COMPARISON)
 }
 
-function normalizeTag(value: string): string | undefined {
+export function normalizeTag(value: string): string | undefined {
   const normalized = value.trim().normalize(TITLE_COMPARISON)
   return normalized === '' ? undefined : normalized
 }
@@ -241,6 +241,12 @@ function summarizeTags(entries: BookmarkEntry[]): TagSummary[] {
 
 export function summarizeEntryTags(entries: BookmarkEntry[]): TagSummary[] {
   return summarizeTags(entries).sort((a, b) => b.count - a.count)
+}
+
+export function findBoundEntry(catalog: Catalog, url: string): BookmarkEntry | undefined {
+  const standardized = standardizeUrl(url)
+  if (!standardized) return undefined
+  return catalog.entries.find((entry) => entry.url === standardized)
 }
 
 function readPair(

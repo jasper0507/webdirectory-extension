@@ -22,7 +22,45 @@
     <form id="capture" class="capture" hidden>
       <header class="mode" id="mode">收录</header>
       <div class="capture-grid">
-        <ul class="tags" id="tags"></ul>
+        <div class="tags">
+          <ul class="tag-list" id="tags"></ul>
+          <div class="tag-picker" id="tag-picker">
+            <button
+              type="button"
+              class="tag-add"
+              id="tag-add"
+              aria-label="添加标签"
+              aria-expanded="false"
+              aria-controls="tag-menu"
+              aria-haspopup="listbox"
+            >
+              添加
+            </button>
+            <div class="tag-menu" id="tag-menu" hidden>
+              <ul
+                class="tag-choices"
+                id="tag-choices"
+                role="listbox"
+                aria-label="已有标签"
+              ></ul>
+              <button type="button" class="tag-create-open" id="tag-create-open">
+                新建
+              </button>
+              <div class="tag-create" id="tag-create" hidden>
+                <input
+                  id="tag-create-name"
+                  aria-label="新标签"
+                  placeholder="名字"
+                  spellcheck="false"
+                  autocomplete="off"
+                />
+                <button type="button" class="text-action" id="tag-create-confirm">
+                  确认
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
         <div class="main">
           <div class="title-row">
             <span class="favicon-slot" id="favicon-slot"></span>

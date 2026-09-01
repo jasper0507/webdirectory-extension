@@ -167,6 +167,15 @@ body.popup {
 }
 
 .tags {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.tag-list {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -176,11 +185,136 @@ body.popup {
   list-style: none;
 }
 
-.tag {
+.tag,
+.tag-add,
+.tag-choice,
+.tag-create-open {
+  max-width: 100%;
+  padding: 0;
+  overflow-wrap: anywhere;
+  background: none;
+  border: none;
+  border-radius: 0;
   color: var(--ash);
   font-size: 11px;
   letter-spacing: 0.08em;
   line-height: 1.3;
+  text-align: left;
+  transition:
+    color 180ms var(--ease),
+    border-color 180ms var(--ease);
+}
+
+.tag:hover,
+.tag-choice:hover,
+.tag-create-open:hover {
+  color: var(--ink);
+}
+
+.tag:focus-visible,
+.tag-choice:focus-visible,
+.tag-create-open:focus-visible {
+  outline: none;
+  color: var(--ink);
+  box-shadow: 0 1px 0 var(--gold);
+}
+
+.tag-add {
+  padding: 0.1rem 0 0.2rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.tag-add:hover,
+.tag-add:focus-visible,
+.tag-add[aria-expanded='true'] {
+  outline: none;
+  color: var(--ink);
+  border-bottom-color: var(--gold);
+  box-shadow: none;
+}
+
+.tag-picker {
+  position: relative;
+}
+
+.tag-menu {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  z-index: 2;
+  min-width: 8.5rem;
+  max-width: 12rem;
+  max-height: 12rem;
+  padding: 0.35rem 0.55rem 0.45rem;
+  overflow: auto;
+  background: var(--sheet);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.tag-choices {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tag-choice,
+.tag-create-open {
+  display: block;
+  width: 100%;
+  padding: 0.28rem 0;
+}
+
+.tag-create-open {
+  margin-top: 0.15rem;
+  border-top: 1px solid var(--line);
+}
+
+.tag-choices:empty + .tag-create-open {
+  margin-top: 0;
+  padding-top: 0.1rem;
+  border-top: none;
+}
+
+.tag-menu[hidden],
+.tag-choices[hidden],
+.tag-create[hidden],
+.tag-create-open[hidden] {
+  display: none;
+}
+
+.tag-create {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.45rem;
+  padding-top: 0.1rem;
+}
+
+#tag-create-name {
+  width: 100%;
+  margin: 0;
+  padding: 0.2rem 0 0.35rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  color: var(--ink);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  transition: border-color 180ms var(--ease);
+}
+
+#tag-create-name::placeholder {
+  color: var(--ash);
+  opacity: 1;
+}
+
+#tag-create-name:focus,
+#tag-create-name:focus-visible {
+  outline: none;
+  border-bottom-color: var(--gold);
 }
 
 .main {
