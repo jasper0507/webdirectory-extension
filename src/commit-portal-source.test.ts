@@ -7,27 +7,15 @@ import {
   type ContentsGetResult,
   type ContentsPutResult,
 } from './github-contents.ts'
-
-const identity = {
-  wordmark: '试厅',
-  monument: ['甲', '乙'],
-  eyebrow: 'BIBLIOTHECA',
-  stampEn: 'SEVEN SHELVES',
-  convergence: '七卷同归',
-  whisper: ['第一行', '第二行'],
-  placeholder: '键入书签或站点...',
-  colophonLeft: 'LEFT',
-  colophonRight: 'RIGHT',
-}
+import {
+  sampleIdentity as identity,
+  samplePortalSource as portalSource,
+} from './portal-fixture.ts'
 
 const repo = {
   owner: 'acme',
   repo: 'webdirectory',
   credential: 'pat-1',
-}
-
-function portalSource(bookmarks: unknown[]): string {
-  return JSON.stringify({ identity, bookmarks })
 }
 
 type PutCall = {
@@ -131,6 +119,13 @@ describe('门户源提交', () => {
       draft: { title: '新名字', url: 'https://old.example/#hash', tags: ['文档'] },
     })
     expect(duplicate).toEqual({ ok: false, error: '地址与其它书签重复' })
+    expect(gateway.puts).toHaveLength(0)
+
+    const duplicateTitle = await commitPortalSource(gateway, repo, {
+      kind: 'capture',
+      draft: { title: '已有', url: 'https://new.example/', tags: ['文档'] },
+    })
+    expect(duplicateTitle).toEqual({ ok: false, error: '标题与其它书签重复' })
     expect(gateway.puts).toHaveLength(0)
 
     const untitled = await commitPortalSource(gateway, repo, {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { emptyConfiguration, type Configuration } from './configuration.ts'
-import type { ContentsGateway } from './github-contents.ts'
+import type { ContentsReader } from './github-contents.ts'
 import { saveOptions, type ConfigurationStore } from './save-options.ts'
 
 function memoryStore(initial?: Configuration): ConfigurationStore & {
@@ -27,18 +27,11 @@ const draft: Configuration = {
   defaultTags: '其他',
 }
 
-function unusedPut(): ContentsGateway['put'] {
-  return async () => {
-    throw new Error('options save must not PUT')
-  }
-}
-
-function okGateway(): ContentsGateway {
+function okGateway(): ContentsReader {
   return {
     async get() {
       return { ok: true, sha: 'sha', text: '{}' }
     },
-    put: unusedPut(),
   }
 }
 
@@ -46,12 +39,11 @@ describe('保存选项', () => {
   it('缺 owner、仓库或凭证时不探测、不写入', async () => {
     const store = memoryStore()
     let probed = false
-    const gateway: ContentsGateway = {
+    const gateway: ContentsReader = {
       async get() {
         probed = true
         return { ok: true, sha: 'sha', text: '{}' }
       },
-      put: unusedPut(),
     }
     const result = await saveOptions(store, gateway, emptyConfiguration())
     expect(result).toEqual({ ok: false, error: '请填写所有者、仓库和凭证' })
@@ -67,24 +59,34 @@ describe('保存选项', () => {
       defaultTags: '其他',
     }
     const store = memoryStore(previous)
-    const gateway: ContentsGateway = {
+    const gateway: ContentsReader = {
       async get() {
         return { ok: false, reason: 'unauthorized' }
       },
-      put: unusedPut(),
     }
     const result = await saveOptions(store, gateway, draft)
     expect(result).toEqual({ ok: false, error: '凭证无效或没有仓库权限' })
     expect(store.snapshot()).toEqual(previous)
   })
 
+  it('网络失败给出短错误且不保存', async () => {
+    const store = memoryStore()
+    const gateway: ContentsReader = {
+      async get() {
+        return { ok: false, reason: 'network' }
+      },
+    }
+    const result = await saveOptions(store, gateway, draft)
+    expect(result).toEqual({ ok: false, error: '无法连接 GitHub' })
+    expect(store.snapshot()).toBeUndefined()
+  })
+
   it('找不到门户源时给出短错误且不保存', async () => {
     const store = memoryStore()
-    const gateway: ContentsGateway = {
+    const gateway: ContentsReader = {
       async get() {
         return { ok: false, reason: 'not-found' }
       },
-      put: unusedPut(),
     }
     const result = await saveOptions(store, gateway, draft)
     expect(result).toEqual({ ok: false, error: '找不到仓库或门户源' })

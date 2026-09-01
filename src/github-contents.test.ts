@@ -51,6 +51,26 @@ describe('门户源连通', () => {
     })
   })
 
+  it('GET 解码 GitHub 折行的 base64', async () => {
+    const text = '{"identity":{"wordmark":"试厅"},"bookmarks":[]}'
+    const wrapped = Buffer.from(text, 'utf8')
+      .toString('base64')
+      .replace(/(.{20})/g, '$1\n')
+    expect(wrapped).toContain('\n')
+    const gateway = createGithubContentsGateway(async () =>
+      jsonResponse(200, {
+        sha: 'abc123',
+        content: wrapped,
+        encoding: 'base64',
+      }),
+    )
+    await expect(gateway.get({ ...repo, path: PORTAL_SOURCE_PATH })).resolves.toEqual({
+      ok: true,
+      sha: 'abc123',
+      text,
+    })
+  })
+
   it('401 或 403 视为凭证无效', async () => {
     const gateway = createGithubContentsGateway(async () => jsonResponse(401, {}))
     await expect(

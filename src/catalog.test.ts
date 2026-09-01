@@ -1,21 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { parsePortalSource, summarizeEntryTags, type BookmarkEntry } from './catalog.ts'
-
-const identity = {
-  wordmark: '试厅',
-  monument: ['甲', '乙'],
-  eyebrow: 'BIBLIOTHECA',
-  stampEn: 'SEVEN SHELVES',
-  convergence: '七卷同归',
-  whisper: ['第一行', '第二行'],
-  placeholder: '键入书签或站点...',
-  colophonLeft: 'LEFT',
-  colophonRight: 'RIGHT',
-}
-
-function portalSource(bookmarks: unknown[], siteIdentity: unknown = identity): string {
-  return JSON.stringify({ identity: siteIdentity, bookmarks })
-}
+import {
+  sampleIdentity as identity,
+  samplePortalSource as portalSource,
+} from './portal-fixture.ts'
 
 describe('parsePortalSource', () => {
   it('通过 interface 规范化身份和书签', () => {

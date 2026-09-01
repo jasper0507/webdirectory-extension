@@ -4,9 +4,9 @@ import {
   type ConfigurationStore,
 } from './configuration.ts'
 import {
+  describeContentsFailure,
   probePortalSource,
-  type ContentsGateway,
-  type PortalSourceProbe,
+  type ContentsReader,
 } from './github-contents.ts'
 
 export type { ConfigurationStore }
@@ -24,7 +24,7 @@ function trimConfiguration(config: Configuration): Configuration {
 
 export async function saveOptions(
   store: ConfigurationStore,
-  gateway: ContentsGateway,
+  gateway: ContentsReader,
   draft: Configuration,
 ): Promise<SaveOptionsResult> {
   const config = trimConfiguration(draft)
@@ -33,7 +33,7 @@ export async function saveOptions(
   }
   const probe = await probePortalSource(gateway, config)
   if (!probe.ok) {
-    return { ok: false, error: probeError(probe) }
+    return { ok: false, error: describeContentsFailure(probe.reason, '连通失败') }
   }
   try {
     await store.save(config)
@@ -41,17 +41,4 @@ export async function saveOptions(
     return { ok: false, error: '无法保存配置' }
   }
   return { ok: true }
-}
-
-function probeError(probe: Extract<PortalSourceProbe, { ok: false }>): string {
-  switch (probe.reason) {
-    case 'unauthorized':
-      return '凭证无效或没有仓库权限'
-    case 'not-found':
-      return '找不到仓库或门户源'
-    case 'network':
-      return '无法连接 GitHub'
-    default:
-      return '连通失败'
-  }
 }

@@ -6,6 +6,12 @@ export type GatewayFailureReason =
   | 'network'
   | 'failed'
 
+export type PortalRepo = {
+  owner: string
+  repo: string
+  credential: string
+}
+
 export type PortalSourceProbe =
   | { ok: true; sha: string }
   | { ok: false; reason: GatewayFailureReason }
@@ -18,12 +24,7 @@ export type ContentsPutResult =
   | { ok: true; sha: string }
   | { ok: false; reason: GatewayFailureReason | 'conflict' }
 
-export type ContentsPathParams = {
-  owner: string
-  repo: string
-  path: string
-  credential: string
-}
+export type ContentsPathParams = PortalRepo & { path: string }
 
 export type ContentsGateway = {
   get(params: ContentsPathParams): Promise<ContentsGetResult>
@@ -34,6 +35,26 @@ export type ContentsGateway = {
       text: string
     },
   ): Promise<ContentsPutResult>
+}
+
+export type ContentsReader = Pick<ContentsGateway, 'get'>
+
+export function describeContentsFailure(
+  reason: GatewayFailureReason | 'conflict',
+  fallback: string,
+): string {
+  switch (reason) {
+    case 'unauthorized':
+      return '凭证无效或没有仓库权限'
+    case 'not-found':
+      return '找不到仓库或门户源'
+    case 'network':
+      return '无法连接 GitHub'
+    case 'conflict':
+      return '与其它写入冲突，未覆盖'
+    default:
+      return fallback
+  }
 }
 
 function contentsUrl(owner: string, repo: string, path: string): string {
@@ -142,14 +163,14 @@ export function createGithubContentsGateway(
 }
 
 export async function probePortalSource(
-  gateway: ContentsGateway,
-  config: { owner: string; repo: string; credential: string },
+  gateway: ContentsReader,
+  repo: PortalRepo,
 ): Promise<PortalSourceProbe> {
   const result = await gateway.get({
-    owner: config.owner,
-    repo: config.repo,
+    owner: repo.owner,
+    repo: repo.repo,
     path: PORTAL_SOURCE_PATH,
-    credential: config.credential,
+    credential: repo.credential,
   })
   if (!result.ok) return result
   return { ok: true, sha: result.sha }

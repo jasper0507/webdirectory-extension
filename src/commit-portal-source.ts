@@ -6,16 +6,14 @@ import {
 } from './catalog.ts'
 import {
   PORTAL_SOURCE_PATH,
+  describeContentsFailure,
   type ContentsGateway,
   type ContentsGetResult,
-  type GatewayFailureReason,
+  type ContentsReader,
+  type PortalRepo,
 } from './github-contents.ts'
 
-export type PortalRepo = {
-  owner: string
-  repo: string
-  credential: string
-}
+export type { PortalRepo }
 
 export type PortalSourceIntent = {
   kind: 'capture'
@@ -42,21 +40,6 @@ function formatCandidateError(issues: PortalSourceIssue[]): string {
   return first.message.replace(/。$/, '')
 }
 
-function gatewayError(reason: GatewayFailureReason | 'conflict'): string {
-  switch (reason) {
-    case 'unauthorized':
-      return '凭证无效或没有仓库权限'
-    case 'not-found':
-      return '找不到仓库或门户源'
-    case 'network':
-      return '无法连接 GitHub'
-    case 'conflict':
-      return '与其它写入冲突，未覆盖'
-    default:
-      return '无法读取门户源'
-  }
-}
-
 function pathParams(repo: PortalRepo) {
   return {
     owner: repo.owner,
@@ -67,11 +50,13 @@ function pathParams(repo: PortalRepo) {
 }
 
 export async function readPortalSource(
-  gateway: ContentsGateway,
+  gateway: ContentsReader,
   repo: PortalRepo,
 ): Promise<ReadPortalSourceResult> {
   const file = await gateway.get(pathParams(repo))
-  if (!file.ok) return { ok: false, error: gatewayError(file.reason) }
+  if (!file.ok) {
+    return { ok: false, error: describeContentsFailure(file.reason, '无法读取门户源') }
+  }
   const parsed = parsePortalSource(file.text)
   if (!parsed.ok) return { ok: false, error: '门户源无效' }
   return { ok: true, catalog: parsed.catalog }
@@ -104,7 +89,7 @@ async function applyCapture(
   if (put.reason === 'conflict') return 'conflict'
   return {
     ok: false,
-    error: put.reason === 'failed' ? '写入失败' : gatewayError(put.reason),
+    error: describeContentsFailure(put.reason, '写入失败'),
   }
 }
 
@@ -114,15 +99,21 @@ export async function commitPortalSource(
   intent: PortalSourceIntent,
 ): Promise<CommitResult> {
   const file = await gateway.get(pathParams(repo))
-  if (!file.ok) return { ok: false, error: gatewayError(file.reason) }
+  if (!file.ok) {
+    return { ok: false, error: describeContentsFailure(file.reason, '无法读取门户源') }
+  }
 
   const first = await applyCapture(gateway, repo, intent, file)
   if (first !== 'conflict') return first
 
   const latest = await gateway.get(pathParams(repo))
-  if (!latest.ok) return { ok: false, error: gatewayError(latest.reason) }
+  if (!latest.ok) {
+    return { ok: false, error: describeContentsFailure(latest.reason, '无法读取门户源') }
+  }
 
   const second = await applyCapture(gateway, repo, intent, latest)
-  if (second === 'conflict') return { ok: false, error: gatewayError('conflict') }
+  if (second === 'conflict') {
+    return { ok: false, error: describeContentsFailure('conflict', '与其它写入冲突，未覆盖') }
+  }
   return second
 }

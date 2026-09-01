@@ -7,6 +7,7 @@ import {
 import {
   isConfigurationComplete,
   parseDefaultTags,
+  type Configuration,
 } from './configuration.ts'
 import { element } from './dom.ts'
 import { createGithubContentsGateway } from './github-contents.ts'
@@ -43,21 +44,27 @@ capture.addEventListener('submit', (event) => {
 void boot()
 
 async function boot(): Promise<void> {
+  let config: Configuration
   try {
-    const config = await createExtensionStore().load()
-    if (!isConfigurationComplete(config)) {
-      gate.hidden = false
-      return
-    }
+    config = await createExtensionStore().load()
+  } catch {
+    gate.hidden = false
+    return
+  }
+  if (!isConfigurationComplete(config)) {
+    gate.hidden = false
+    return
+  }
 
-    portalRepo = {
-      owner: config.owner,
-      repo: config.repo,
-      credential: config.credential,
-    }
-    capture.hidden = false
-    renderTags(parseDefaultTags(config.defaultTags))
+  portalRepo = {
+    owner: config.owner,
+    repo: config.repo,
+    credential: config.credential,
+  }
+  capture.hidden = false
+  renderTags(parseDefaultTags(config.defaultTags))
 
+  try {
     const [page, loaded] = await Promise.all([
       readCurrentPage({
         tabs: chrome.tabs,
@@ -84,7 +91,7 @@ async function boot(): Promise<void> {
     catalogReady = true
     syncSave()
   } catch {
-    gate.hidden = false
+    setStatus('无法读取当前页或门户源', 'error')
   }
 }
 

@@ -1,21 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { prepareCapture } from './capture.ts'
-
-const identity = {
-  wordmark: '试厅',
-  monument: ['甲', '乙'],
-  eyebrow: 'BIBLIOTHECA',
-  stampEn: 'SEVEN SHELVES',
-  convergence: '七卷同归',
-  whisper: ['第一行', '第二行'],
-  placeholder: '键入书签或站点...',
-  colophonLeft: 'LEFT',
-  colophonRight: 'RIGHT',
-}
-
-function portalSource(bookmarks: unknown[]): string {
-  return JSON.stringify({ identity, bookmarks })
-}
+import { samplePortalSource as portalSource } from './portal-fixture.ts'
 
 describe('prepareCapture', () => {
   it('规范化新条目并按录入顺序追加', () => {
