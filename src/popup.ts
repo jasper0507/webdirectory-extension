@@ -51,6 +51,8 @@ const urlError = element('url-error', HTMLElement)
 const deleteButton = element('delete', HTMLButtonElement)
 const saveButton = element('save', HTMLButtonElement)
 const statusEl = element('status', HTMLElement)
+const statusMessage = element('status-message', HTMLElement)
+const statusAction = element('status-action', HTMLButtonElement)
 
 const gateway = createGithubContentsGateway(fetch)
 
@@ -60,9 +62,16 @@ let catalogReady = false
 let busy = false
 let boundUrl: string | null = null
 let deleted = false
+let recover: (() => void) | null = null
 
-goOptions.addEventListener('click', () => {
+function openOptions(): void {
   chrome.runtime.openOptionsPage()
+}
+
+goOptions.addEventListener('click', openOptions)
+
+statusAction.addEventListener('click', () => {
+  recover?.()
 })
 
 capture.addEventListener('submit', (event) => {
@@ -188,7 +197,7 @@ async function boot(): Promise<void> {
     }
     if (!loaded.ok) {
       bindDescription(page.description)
-      setStatus(`错误：${loaded.error}，请检查设置或稍后重试`, 'error')
+      showReadError(loaded.error)
       return
     }
     const bound = findBoundEntry(loaded.catalog, urlInput.value)
@@ -210,9 +219,35 @@ async function boot(): Promise<void> {
     }
     setStatus('门户源已读取', 'ok')
   } catch {
-    setStatus('错误：无法读取当前页或门户源，请重新打开收录窗口重试', 'error')
+    showReadError('无法读取当前页或门户源')
   } finally {
     setCaptureBusy(false)
+  }
+}
+
+async function retryRead(): Promise<void> {
+  if (!portalRepo || busy) return
+  busy = true
+  setCaptureBusy(true)
+  syncActions()
+  setStatus('正在重新读取门户源…', 'pending')
+  try {
+    const loaded = await readPortalSource(gateway, portalRepo)
+    if (!loaded.ok) {
+      showReadError(loaded.error)
+      return
+    }
+    const bound = findBoundEntry(loaded.catalog, urlInput.value)
+    catalogReady = true
+    if (bound) bindSlot(bound.url)
+    commitTagSelection(withCatalog(tagSelection, loaded.catalog.tags))
+    setStatus('门户源已读取', 'ok')
+  } catch {
+    showReadError('无法读取门户源')
+  } finally {
+    busy = false
+    setCaptureBusy(false)
+    syncActions()
   }
 }
 
@@ -265,9 +300,14 @@ async function writePortal(
   try {
     const result = await commitPortalSource(gateway, repo, intent)
     if (result.ok) onOk(result)
-    else showWriteError(result.error)
+    else {
+      showWriteError(
+        result.error,
+        intent.kind === 'delete' ? onDelete : onSave,
+      )
+    }
   } catch {
-    showWriteError('写入失败')
+    showWriteError('写入失败', intent.kind === 'delete' ? onDelete : onSave)
   } finally {
     busy = false
     setCaptureBusy(false)
@@ -285,9 +325,16 @@ function syncActions(): void {
   deleteButton.disabled = !catalogReady || busy
 }
 
-function setStatus(text: string, state: 'ok' | 'error' | 'pending' | 'success'): void {
-  statusEl.textContent = text
+function setStatus(
+  text: string,
+  state: 'ok' | 'error' | 'pending' | 'success',
+  action?: { label: '去选项' | '重试'; run: () => void },
+): void {
+  statusMessage.textContent = text
   statusEl.dataset.state = state
+  recover = action?.run ?? null
+  statusAction.textContent = action?.label ?? ''
+  statusAction.hidden = action == null
 }
 
 function validateDraft(): boolean {
@@ -319,7 +366,21 @@ function clearFieldError(input: HTMLInputElement, messageEl: HTMLElement): void 
   messageEl.hidden = true
 }
 
-function showWriteError(error: string): void {
+function isSettingsError(error: string): boolean {
+  return error.includes('凭证') || error === '找不到仓库或门户源'
+}
+
+function showReadError(error: string): void {
+  setStatus(
+    `错误：${error}`,
+    'error',
+    isSettingsError(error)
+      ? { label: '去选项', run: openOptions }
+      : { label: '重试', run: () => void retryRead() },
+  )
+}
+
+function showWriteError(error: string, retry: () => Promise<void>): void {
   if (error.startsWith('标题')) {
     setFieldError(titleInput, titleError, `错误：${error}，请修改标题`)
     setStatus('未写入，请修改标题', 'error')
@@ -336,11 +397,13 @@ function showWriteError(error: string): void {
     setStatus(`错误：${error}，请先修复 public/portal.json`, 'error')
     return
   }
-  const recovery =
-    error.includes('凭证') || error.includes('找不到')
-      ? '请去选项检查设置'
-      : '请稍后重试'
-  setStatus(`错误：${error}，${recovery}`, 'error')
+  setStatus(
+    `错误：${error}`,
+    'error',
+    isSettingsError(error)
+      ? { label: '去选项', run: openOptions }
+      : { label: '重试', run: () => void retry() },
+  )
 }
 
 function commitTagSelection(next: TagSelection): void {

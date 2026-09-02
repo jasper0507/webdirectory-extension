@@ -506,6 +506,11 @@ body.popup {
 .actions #status {
   flex: 1;
   margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.status-action {
+  margin-inline-start: 0.65rem;
 }
 
 .actions .delete,

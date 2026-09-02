@@ -106,7 +106,15 @@
         <button type="button" class="text-action delete" id="delete" hidden>
           删除
         </button>
-        <p id="status" role="status" aria-live="polite"></p>
+        <div id="status">
+          <span id="status-message" role="status" aria-live="polite"></span>
+          <button
+            type="button"
+            class="text-action status-action"
+            id="status-action"
+            hidden
+          ></button>
+        </div>
         <button type="submit" class="text-action save" id="save" disabled>
           保存
         </button>
