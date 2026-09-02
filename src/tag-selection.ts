@@ -44,7 +44,7 @@ export function removeTag(selection: TagSelection, name: string): TagSelection {
 }
 
 export function revealChoices(selection: TagSelection): TagSelection {
-  return consumePrefill(selection)
+  return selection
 }
 
 export function addTag(selection: TagSelection, rawName: string): TagSelection {

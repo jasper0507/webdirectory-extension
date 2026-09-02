@@ -21,7 +21,7 @@
     </section>
     <form id="capture" class="capture" hidden>
       <header class="mode" id="mode">收录</header>
-      <div class="capture-grid">
+      <div class="capture-grid" id="capture-grid">
         <div class="tags" id="tag-column">
           <ul class="tag-list" id="tags"></ul>
           <div class="tag-picker" id="tag-picker">
@@ -32,7 +32,6 @@
               aria-label="添加标签"
               aria-expanded="false"
               aria-controls="tag-menu"
-              aria-haspopup="listbox"
             >
               添加
             </button>
@@ -40,7 +39,6 @@
               <ul
                 class="tag-choices"
                 id="tag-choices"
-                role="listbox"
                 aria-label="已有标签"
               ></ul>
               <button type="button" class="tag-create-open" id="tag-create-open">
@@ -64,13 +62,18 @@
         <div class="main">
           <div class="title-row">
             <span class="favicon-slot" id="favicon-slot"></span>
-            <input
-              id="title"
-              name="title"
-              aria-label="标题"
-              spellcheck="false"
-              autocomplete="off"
-            />
+            <div class="title-field">
+              <input
+                id="title"
+                name="title"
+                aria-label="标题"
+                aria-describedby="title-error"
+                spellcheck="false"
+                autocomplete="off"
+                required
+              />
+              <p class="field-error" id="title-error" hidden></p>
+            </div>
           </div>
           <button type="button" class="desc-line" id="desc-line">
             添加描述
@@ -86,9 +89,13 @@
             id="url"
             name="url"
             aria-label="URL"
+            aria-describedby="url-error"
             spellcheck="false"
             autocomplete="off"
+            type="url"
+            required
           />
+          <p class="field-error" id="url-error" hidden></p>
         </div>
       </div>
       <footer class="actions">

@@ -59,7 +59,7 @@ describe('标签选择', () => {
     expect(duplicate.selected).toEqual(['工具', '笔记', '文档'])
   })
 
-  it('第一次打开下拉时，未改动的预填先清空', () => {
+  it('只查看下拉不会改动预填，真正选择时才替换预填', () => {
     const next = revealChoices(
       createTagSelection({
         selected: ['其他'],
@@ -70,11 +70,12 @@ describe('标签选择', () => {
         prefill: true,
       }),
     )
-    expect(next.selected).toEqual([])
-    expect(availableTags(next).map((tag) => tag.name)).toEqual(['其他', '文档'])
+    expect(next.selected).toEqual(['其他'])
+    expect(availableTags(next).map((tag) => tag.name)).toEqual(['文档'])
+    expect(addTag(next, '文档').selected).toEqual(['文档'])
   })
 
-  it('点掉预填或去新建时，未改动的预填先整组清空', () => {
+  it('点掉预填会先整组清空，查看新建入口不会', () => {
     const prefilled = createTagSelection({
       selected: ['其他', '阅读'],
       catalog: [
@@ -85,7 +86,7 @@ describe('标签选择', () => {
       prefill: true,
     })
     expect(removeTag(prefilled, '其他').selected).toEqual([])
-    expect(revealChoices(prefilled).selected).toEqual([])
+    expect(revealChoices(prefilled).selected).toEqual(['其他', '阅读'])
   })
 
   it('未改动预填时加入标签会先清空再加入', () => {
@@ -114,8 +115,8 @@ describe('标签选择', () => {
     expect(addTag(bound, '参考').selected).toEqual(['文档', '工具', '参考'])
   })
 
-  it('预填清空之后再点掉只去掉那一个', () => {
-    const cleared = revealChoices(
+  it('开始选择之后再点掉只去掉那一个', () => {
+    const viewed = revealChoices(
       createTagSelection({
         selected: ['其他'],
         catalog: [
@@ -125,7 +126,7 @@ describe('标签选择', () => {
         prefill: true,
       }),
     )
-    const next = removeTag(addTag(addTag(cleared, '其他'), '文档'), '其他')
+    const next = removeTag(addTag(addTag(viewed, '其他'), '文档'), '其他')
     expect(next.selected).toEqual(['文档'])
   })
 
@@ -138,7 +139,7 @@ describe('标签选择', () => {
     expect(selection.selected).toEqual(['文档', '工具'])
   })
 
-  it('目录标签后到时不改已选，未改动预填仍可清空', () => {
+  it('目录标签后到时不改已选，查看选项也保留预填', () => {
     const next = withCatalog(
       createTagSelection({ selected: ['其他'], catalog: [], prefill: true }),
       [
@@ -148,7 +149,7 @@ describe('标签选择', () => {
     )
     expect(next.selected).toEqual(['其他'])
     expect(availableTags(next).map((tag) => tag.name)).toEqual(['文档'])
-    expect(revealChoices(next).selected).toEqual([])
+    expect(revealChoices(next).selected).toEqual(['其他'])
   })
 
   it('空白名字不能加入', () => {
