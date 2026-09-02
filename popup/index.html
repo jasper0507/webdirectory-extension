@@ -30,6 +30,7 @@
               class="tag-add"
               id="tag-add"
               aria-label="添加标签"
+              aria-describedby="tag-error"
               aria-expanded="false"
               aria-controls="tag-menu"
             >
@@ -48,20 +49,23 @@
                 <input
                   id="tag-create-name"
                   aria-label="新标签"
+                  aria-describedby="tag-create-error"
                   placeholder="名字"
                   spellcheck="false"
                   autocomplete="off"
                 />
+                <p class="field-error" id="tag-create-error" hidden></p>
                 <button type="button" class="text-action" id="tag-create-confirm">
                   确认
                 </button>
               </div>
             </div>
           </div>
+          <p class="field-error tag-error" id="tag-error" aria-live="polite" hidden></p>
         </div>
         <div class="main">
           <div class="title-row">
-            <span class="favicon-slot" id="favicon-slot"></span>
+            <span class="favicon-slot" id="favicon-slot" hidden></span>
             <div class="title-field">
               <input
                 id="title"

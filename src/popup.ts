@@ -38,7 +38,9 @@ const tagChoices = element('tag-choices', HTMLUListElement)
 const tagCreateOpen = element('tag-create-open', HTMLButtonElement)
 const tagCreate = element('tag-create', HTMLElement)
 const tagCreateName = element('tag-create-name', HTMLInputElement)
+const tagCreateError = element('tag-create-error', HTMLElement)
 const tagCreateConfirm = element('tag-create-confirm', HTMLButtonElement)
+const tagError = element('tag-error', HTMLElement)
 const faviconSlot = element('favicon-slot', HTMLElement)
 const titleInput = element('title', HTMLInputElement)
 const titleError = element('title-error', HTMLElement)
@@ -117,6 +119,10 @@ tagCreateName.addEventListener('keydown', (event) => {
   }
 })
 
+tagCreateName.addEventListener('input', () => {
+  clearFieldError(tagCreateName, tagCreateError)
+})
+
 document.addEventListener('click', (event) => {
   if (!(event.target instanceof Node) || tagColumn.contains(event.target)) return
   closeTagMenu()
@@ -149,7 +155,7 @@ async function boot(): Promise<void> {
     credential: config.credential,
   }
   capture.hidden = false
-  captureGrid.setAttribute('aria-busy', 'true')
+  setCaptureBusy(true)
   setStatus('正在读取当前页与门户源…', 'pending')
   commitTagSelection(
     createTagSelection({
@@ -173,8 +179,10 @@ async function boot(): Promise<void> {
       const icon = document.createElement('img')
       icon.alt = ''
       icon.src = page.favIconUrl
+      faviconSlot.hidden = false
       icon.addEventListener('error', () => {
         icon.remove()
+        faviconSlot.hidden = true
       })
       faviconSlot.append(icon)
     }
@@ -204,7 +212,7 @@ async function boot(): Promise<void> {
   } catch {
     setStatus('错误：无法读取当前页或门户源，请重新打开收录窗口重试', 'error')
   } finally {
-    captureGrid.setAttribute('aria-busy', 'false')
+    setCaptureBusy(false)
   }
 }
 
@@ -225,7 +233,10 @@ async function onSave(): Promise<void> {
       : { kind: 'capture', draft },
     (result) => {
       bindSlot(result.url)
-      setStatus(updating ? '已改写' : restoring ? '已恢复' : '已收录', 'ok')
+      setStatus(
+        updating ? '已改写到门户源' : restoring ? '已恢复到门户源' : '已收录到门户源',
+        'success',
+      )
     },
   )
 }
@@ -234,7 +245,7 @@ async function onDelete(): Promise<void> {
   if (boundUrl === null) return
   await writePortal({ kind: 'delete', boundUrl }, () => {
     unbindSlot()
-    setStatus('已删除，可恢复', 'ok')
+    setStatus('已从门户源删除，可恢复', 'success')
   })
 }
 
@@ -245,7 +256,7 @@ async function writePortal(
   if (!portalRepo || !catalogReady || busy) return
   const repo = portalRepo
   busy = true
-  captureGrid.setAttribute('aria-busy', 'true')
+  setCaptureBusy(true)
   syncActions()
   setStatus(
     intent.kind === 'delete' ? '正在删除…' : deleted ? '正在恢复…' : '正在写入门户源…',
@@ -259,9 +270,14 @@ async function writePortal(
     showWriteError('写入失败')
   } finally {
     busy = false
-    captureGrid.setAttribute('aria-busy', 'false')
+    setCaptureBusy(false)
     syncActions()
   }
+}
+
+function setCaptureBusy(value: boolean): void {
+  captureGrid.setAttribute('aria-busy', String(value))
+  captureGrid.inert = value
 }
 
 function syncActions(): void {
@@ -269,7 +285,7 @@ function syncActions(): void {
   deleteButton.disabled = !catalogReady || busy
 }
 
-function setStatus(text: string, state: 'ok' | 'error' | 'pending'): void {
+function setStatus(text: string, state: 'ok' | 'error' | 'pending' | 'success'): void {
   statusEl.textContent = text
   statusEl.dataset.state = state
 }
@@ -329,6 +345,10 @@ function showWriteError(error: string): void {
 
 function commitTagSelection(next: TagSelection): void {
   tagSelection = next
+  if (next.selected.length > 0) {
+    tagError.textContent = ''
+    tagError.hidden = true
+  }
   renderSelectedTags()
   if (!tagMenu.hidden && tagCreate.hidden) renderTagChoices()
   syncActions()
@@ -341,10 +361,19 @@ function renderSelectedTags(): void {
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'tag'
-    button.textContent = name
+    const removeMark = document.createElement('span')
+    removeMark.className = 'tag-remove'
+    removeMark.setAttribute('aria-hidden', 'true')
+    button.append(name, removeMark)
     button.setAttribute('aria-label', `去掉 ${name}`)
     button.addEventListener('click', () => {
-      commitTagSelection(removeTag(tagSelection, name))
+      const next = removeTag(tagSelection, name)
+      commitTagSelection(next)
+      if (next.selected.length === 0) {
+        tagError.textContent = '错误：至少保留一个标签'
+        tagError.hidden = false
+        tagAdd.focus()
+      }
     })
     item.append(button)
     tagsEl.append(item)
@@ -391,7 +420,12 @@ function showTagCreate(): void {
 }
 
 function confirmNewTag(): void {
-  if (!normalizeTag(tagCreateName.value)) return
+  if (!normalizeTag(tagCreateName.value)) {
+    setFieldError(tagCreateName, tagCreateError, '错误：请输入标签名字')
+    tagCreateName.focus()
+    return
+  }
+  clearFieldError(tagCreateName, tagCreateError)
   commitTagSelection(addTag(tagSelection, tagCreateName.value))
   closeTagMenu(true)
 }

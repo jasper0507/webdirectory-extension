@@ -210,6 +210,42 @@ body.popup {
   padding-block: 0.25rem;
 }
 
+.tag-remove {
+  position: relative;
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-inline-start: 0.35rem;
+  color: var(--ash);
+  opacity: 0.55;
+  vertical-align: 0.02rem;
+}
+
+.tag-remove::before,
+.tag-remove::after {
+  position: absolute;
+  inset-inline-start: 50%;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background: currentColor;
+  content: "";
+}
+
+.tag-remove::before {
+  transform: rotate(45deg);
+}
+
+.tag-remove::after {
+  transform: rotate(-45deg);
+}
+
+.tag:hover .tag-remove,
+.tag:focus-visible .tag-remove {
+  color: var(--gold);
+  opacity: 1;
+}
+
 .tag:hover,
 .tag-choice:hover,
 .tag-create-open:hover {
@@ -240,6 +276,10 @@ body.popup {
 
 .tag-picker {
   position: relative;
+}
+
+.tag-error {
+  max-width: 5.25rem;
 }
 
 .tag-menu {
@@ -353,6 +393,10 @@ body.popup {
   border-radius: 2px;
 }
 
+.favicon-slot[hidden] {
+  display: none;
+}
+
 .favicon-slot img {
   width: 100%;
   height: 100%;
@@ -367,6 +411,12 @@ body.popup {
   color: var(--ink);
   font-size: 1.12rem;
   line-height: 1.25;
+  box-shadow: 0 1px 0 transparent;
+  transition: box-shadow 180ms var(--ease);
+}
+
+#title:hover {
+  box-shadow: 0 1px 0 var(--line);
 }
 
 #title:focus,
@@ -382,12 +432,23 @@ body.popup {
   overflow: hidden;
   background: none;
   border: none;
+  border-bottom: 1px solid transparent;
   color: var(--ash);
   font-size: 13px;
   line-height: 1.4;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: border-color 180ms var(--ease);
+}
+
+.desc-line:hover {
+  border-bottom-color: var(--line);
+}
+
+.desc-line:focus-visible {
+  outline: none;
+  border-bottom-color: var(--gold);
 }
 
 #description {
@@ -519,4 +580,19 @@ body.options {
 
 #status[data-state="pending"] {
   color: var(--ash);
+}
+
+#status[data-state="success"] {
+  color: var(--ink);
+}
+
+#status[data-state="success"]::before {
+  display: inline-block;
+  width: 0.35rem;
+  height: 0.35rem;
+  margin-inline-end: 0.4rem;
+  border: 1px solid var(--gold);
+  border-radius: 50%;
+  content: "";
+  vertical-align: 0.05rem;
 }
