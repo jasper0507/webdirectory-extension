@@ -350,6 +350,29 @@ describe('门户源提交', () => {
     ])
     expect(parsePortalSource(gateway.puts[1]?.text ?? '').ok).toBe(true)
   })
+
+  it('找不到绑定条目则不 PUT', async () => {
+    const current = portalSource([
+      { title: '已有', url: 'https://old.example/', tags: ['工具'] },
+    ])
+    const gateway = fakeGithub({
+      get: () => ({ ok: true, sha: 'sha-1', text: current }),
+    })
+
+    const deleted = await commitPortalSource(gateway, repo, {
+      kind: 'delete',
+      boundUrl: 'https://missing.example/',
+    })
+    expect(deleted).toEqual({ ok: false, error: '找不到要删除的书签' })
+
+    const updated = await commitPortalSource(gateway, repo, {
+      kind: 'update',
+      boundUrl: 'https://missing.example/',
+      draft: { title: '新', url: 'https://new.example/', tags: ['文档'] },
+    })
+    expect(updated).toEqual({ ok: false, error: '找不到要改写的书签' })
+    expect(gateway.puts).toHaveLength(0)
+  })
 })
 
 describe('读取门户源', () => {

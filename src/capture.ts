@@ -34,7 +34,10 @@ function sourceEntry(entry: BookmarkEntry): BookmarkDraft {
   }
 }
 
-function boundEntryMissing(action: '改写' | '删除'): CandidatePreparation {
+function boundEntryMissing(action: '改写' | '删除'): {
+  ok: false
+  issues: PortalSourceIssue[]
+} {
   return {
     ok: false,
     issues: [
@@ -56,6 +59,30 @@ function loadDocument(currentJson: string):
     ok: true,
     catalog: parsed.catalog,
     document: JSON.parse(currentJson) as PortalDocument,
+  }
+}
+
+function loadBoundSlot(
+  currentJson: string,
+  boundUrl: string,
+  action: '改写' | '删除',
+):
+  | { ok: false; issues: PortalSourceIssue[] }
+  | {
+      ok: true
+      document: PortalDocument
+      bound: BookmarkEntry
+      index: number
+    } {
+  const loaded = loadDocument(currentJson)
+  if (!loaded.ok) return loaded
+  const bound = findBoundEntry(loaded.catalog, boundUrl)
+  if (!bound) return boundEntryMissing(action)
+  return {
+    ok: true,
+    document: loaded.document,
+    bound,
+    index: loaded.catalog.entries.indexOf(bound),
   }
 }
 
@@ -101,46 +128,38 @@ export function prepareUpdate(
   boundUrl: string,
   draft: BookmarkDraft,
 ): CandidatePreparation {
-  const loaded = loadDocument(currentJson)
-  if (!loaded.ok) return loaded
+  const slot = loadBoundSlot(currentJson, boundUrl, '改写')
+  if (!slot.ok) return slot
 
-  const bound = findBoundEntry(loaded.catalog, boundUrl)
-  if (!bound) return boundEntryMissing('改写')
-
-  const index = loaded.catalog.entries.indexOf(bound)
-  const candidateBookmarks = [...loaded.document.bookmarks]
-  candidateBookmarks[index] = draft
-  const candidate = parseCandidate(loaded.document, candidateBookmarks)
+  const candidateBookmarks = [...slot.document.bookmarks]
+  candidateBookmarks[slot.index] = draft
+  const candidate = parseCandidate(slot.document, candidateBookmarks)
   if (!candidate.ok) return candidate
 
-  const updated = candidate.catalog.entries[index]
+  const updated = candidate.catalog.entries[slot.index]
   if (!updated) return boundEntryMissing('改写')
 
   const entry = sourceEntry(updated)
-  const bookmarks = [...loaded.document.bookmarks]
-  bookmarks[index] = entry
-  return preparedCandidate(loaded.document, bookmarks, [entry], candidate.catalog.entries)
+  const bookmarks = [...slot.document.bookmarks]
+  bookmarks[slot.index] = entry
+  return preparedCandidate(slot.document, bookmarks, [entry], candidate.catalog.entries)
 }
 
 export function prepareDelete(
   currentJson: string,
   boundUrl: string,
 ): CandidatePreparation {
-  const loaded = loadDocument(currentJson)
-  if (!loaded.ok) return loaded
+  const slot = loadBoundSlot(currentJson, boundUrl, '删除')
+  if (!slot.ok) return slot
 
-  const bound = findBoundEntry(loaded.catalog, boundUrl)
-  if (!bound) return boundEntryMissing('删除')
-
-  const index = loaded.catalog.entries.indexOf(bound)
-  const bookmarks = loaded.document.bookmarks.filter((_, i) => i !== index)
-  const candidate = parseCandidate(loaded.document, bookmarks)
+  const bookmarks = slot.document.bookmarks.filter((_, i) => i !== slot.index)
+  const candidate = parseCandidate(slot.document, bookmarks)
   if (!candidate.ok) return candidate
 
   return preparedCandidate(
-    loaded.document,
+    slot.document,
     bookmarks,
-    [sourceEntry(bound)],
+    [sourceEntry(slot.bound)],
     candidate.catalog.entries,
   )
 }

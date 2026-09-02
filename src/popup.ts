@@ -3,7 +3,9 @@ import { createExtensionStore } from './chrome-store.ts'
 import {
   commitPortalSource,
   readPortalSource,
+  type CommitResult,
   type PortalRepo,
+  type PortalSourceIntent,
 } from './commit-portal-source.ts'
 import {
   isConfigurationComplete,
@@ -64,6 +66,12 @@ capture.addEventListener('submit', (event) => {
 
 deleteButton.addEventListener('click', () => {
   void onDelete()
+})
+
+descLine.addEventListener('click', () => {
+  descLine.hidden = true
+  descriptionInput.hidden = false
+  descriptionInput.focus()
 })
 
 tagAdd.addEventListener('click', () => {
@@ -171,10 +179,7 @@ async function boot(): Promise<void> {
 }
 
 async function onSave(): Promise<void> {
-  if (!portalRepo || !catalogReady || busy || tagSelection.selected.length === 0) return
-  busy = true
-  syncActions()
-  setStatus('', 'pending')
+  if (tagSelection.selected.length === 0) return
   const description = descriptionInput.value.trim()
   const draft = {
     title: titleInput.value,
@@ -182,44 +187,39 @@ async function onSave(): Promise<void> {
     tags: tagSelection.selected,
     ...(description ? { description } : {}),
   }
-  try {
-    const result = await commitPortalSource(
-      gateway,
-      portalRepo,
-      boundUrl
-        ? { kind: 'update', boundUrl, draft }
-        : { kind: 'capture', draft },
-    )
-    if (result.ok) {
-      const updating = boundUrl !== null
+  const updating = boundUrl !== null
+  await writePortal(
+    boundUrl
+      ? { kind: 'update', boundUrl, draft }
+      : { kind: 'capture', draft },
+    (result) => {
       bindSlot(result.url)
       setStatus(updating ? '已改写' : '已收录', 'ok')
-    } else {
-      setStatus(result.error, 'error')
-    }
-  } catch {
-    setStatus('写入失败', 'error')
-  }
-  busy = false
-  syncActions()
+    },
+  )
 }
 
 async function onDelete(): Promise<void> {
-  if (!portalRepo || !catalogReady || busy || boundUrl === null) return
+  if (boundUrl === null) return
+  await writePortal({ kind: 'delete', boundUrl }, () => {
+    unbindSlot()
+    setStatus('已删除', 'ok')
+  })
+}
+
+async function writePortal(
+  intent: PortalSourceIntent,
+  onOk: (result: Extract<CommitResult, { ok: true }>) => void,
+): Promise<void> {
+  if (!portalRepo || !catalogReady || busy) return
+  const repo = portalRepo
   busy = true
   syncActions()
   setStatus('', 'pending')
   try {
-    const result = await commitPortalSource(gateway, portalRepo, {
-      kind: 'delete',
-      boundUrl,
-    })
-    if (result.ok) {
-      unbindSlot()
-      setStatus('已删除', 'ok')
-    } else {
-      setStatus(result.error, 'error')
-    }
+    const result = await commitPortalSource(gateway, repo, intent)
+    if (result.ok) onOk(result)
+    else setStatus(result.error, 'error')
   } catch {
     setStatus('写入失败', 'error')
   }
@@ -324,9 +324,4 @@ function unbindSlot(): void {
 function bindDescription(initial: string): void {
   descriptionInput.value = initial
   descLine.textContent = initial || '添加描述'
-  descLine.addEventListener('click', () => {
-    descLine.hidden = true
-    descriptionInput.hidden = false
-    descriptionInput.focus()
-  })
 }

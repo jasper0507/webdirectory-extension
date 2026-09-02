@@ -105,18 +105,18 @@ async function applyIntent(
     return { ok: false, error: formatCandidateError(prepared.issues) }
   }
 
-  const written = prepared.entries[0]
-  if (!written) {
+  const affected = prepared.entries[0]
+  if (!affected) {
     return { ok: false, error: '门户源无效，未写入' }
   }
 
   const put = await gateway.put({
     ...pathParams(repo),
     sha: file.sha,
-    message: commitMessage(intent.kind, written.title),
+    message: commitMessage(intent.kind, affected.title),
     text: prepared.jsonText,
   })
-  if (put.ok) return { ok: true, url: written.url }
+  if (put.ok) return { ok: true, url: affected.url }
   if (put.reason === 'conflict') return 'conflict'
   return {
     ok: false,
