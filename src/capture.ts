@@ -34,14 +34,14 @@ function sourceEntry(entry: BookmarkEntry): BookmarkDraft {
   }
 }
 
-function boundEntryMissing(): CandidatePreparation {
+function boundEntryMissing(action: '改写' | '删除'): CandidatePreparation {
   return {
     ok: false,
     issues: [
       {
         path: '/bookmarks',
         code: 'missing-field',
-        message: '找不到要改写的书签。',
+        message: `找不到要${action}的书签。`,
       },
     ],
   }
@@ -105,7 +105,7 @@ export function prepareUpdate(
   if (!loaded.ok) return loaded
 
   const bound = findBoundEntry(loaded.catalog, boundUrl)
-  if (!bound) return boundEntryMissing()
+  if (!bound) return boundEntryMissing('改写')
 
   const index = loaded.catalog.entries.indexOf(bound)
   const candidateBookmarks = [...loaded.document.bookmarks]
@@ -114,10 +114,33 @@ export function prepareUpdate(
   if (!candidate.ok) return candidate
 
   const updated = candidate.catalog.entries[index]
-  if (!updated) return boundEntryMissing()
+  if (!updated) return boundEntryMissing('改写')
 
   const entry = sourceEntry(updated)
   const bookmarks = [...loaded.document.bookmarks]
   bookmarks[index] = entry
   return preparedCandidate(loaded.document, bookmarks, [entry], candidate.catalog.entries)
+}
+
+export function prepareDelete(
+  currentJson: string,
+  boundUrl: string,
+): CandidatePreparation {
+  const loaded = loadDocument(currentJson)
+  if (!loaded.ok) return loaded
+
+  const bound = findBoundEntry(loaded.catalog, boundUrl)
+  if (!bound) return boundEntryMissing('删除')
+
+  const index = loaded.catalog.entries.indexOf(bound)
+  const bookmarks = loaded.document.bookmarks.filter((_, i) => i !== index)
+  const candidate = parseCandidate(loaded.document, bookmarks)
+  if (!candidate.ok) return candidate
+
+  return preparedCandidate(
+    loaded.document,
+    bookmarks,
+    [sourceEntry(bound)],
+    candidate.catalog.entries,
+  )
 }

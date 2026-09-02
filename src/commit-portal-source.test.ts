@@ -273,6 +273,83 @@ describe('门户源提交', () => {
     expect(duplicateUrl).toEqual({ ok: false, error: '地址与其它书签重复' })
     expect(gateway.puts).toHaveLength(0)
   })
+
+  it('删除绑定槽，不改站点身份，其余条目位置不变', async () => {
+    const current = portalSource([
+      { title: '先', url: 'https://first.example/', tags: ['工具'] },
+      { title: '中', url: 'https://mid.example/', tags: ['文档'], description: '旧说明' },
+      { title: '后', url: 'https://last.example/', tags: ['参考'] },
+    ])
+    const gateway = fakeGithub({
+      get: () => ({ ok: true, sha: 'sha-1', text: current }),
+      put: () => ({ ok: true, sha: 'sha-2' }),
+    })
+
+    const result = await commitPortalSource(gateway, repo, {
+      kind: 'delete',
+      boundUrl: 'HTTPS://MID.EXAMPLE/#old',
+    })
+
+    expect(result).toEqual({ ok: true, url: 'https://mid.example/' })
+    expect(gateway.puts).toHaveLength(1)
+    const written = gateway.puts[0]
+    expect(written?.sha).toBe('sha-1')
+    expect(written?.message).toBe('删除: 中')
+    const body = JSON.parse(written?.text ?? '') as {
+      identity: unknown
+      bookmarks: Array<{ title: string; url: string; tags: string[]; description?: string }>
+    }
+    expect(body.identity).toEqual(identity)
+    expect(body.bookmarks).toEqual([
+      { title: '先', url: 'https://first.example/', tags: ['工具'] },
+      { title: '后', url: 'https://last.example/', tags: ['参考'] },
+    ])
+    expect(parsePortalSource(written?.text ?? '').ok).toBe(true)
+  })
+
+  it('删除后再收录同一条，追加在末尾', async () => {
+    let current = {
+      sha: 'sha-1',
+      text: portalSource([
+        { title: '先', url: 'https://first.example/', tags: ['工具'] },
+        { title: '中', url: 'https://mid.example/', tags: ['文档'] },
+        { title: '后', url: 'https://last.example/', tags: ['参考'] },
+      ]),
+    }
+    const gateway = fakeGithub({
+      get: () => ({ ok: true, ...current }),
+      put: (call) => {
+        current = { sha: `sha-${String(gateway.puts.length + 1)}`, text: call.text }
+        return { ok: true, sha: current.sha }
+      },
+    })
+
+    const deleted = await commitPortalSource(gateway, repo, {
+      kind: 'delete',
+      boundUrl: 'https://mid.example/',
+    })
+    expect(deleted).toEqual({ ok: true, url: 'https://mid.example/' })
+
+    const recaptured = await commitPortalSource(gateway, repo, {
+      kind: 'capture',
+      draft: { title: '中', url: 'https://mid.example/', tags: ['文档'] },
+    })
+    expect(recaptured).toEqual({ ok: true, url: 'https://mid.example/' })
+    expect(gateway.puts).toHaveLength(2)
+    expect(gateway.puts[0]?.message).toBe('删除: 中')
+    expect(gateway.puts[1]?.message).toBe('收录: 中')
+    const body = JSON.parse(gateway.puts[1]?.text ?? '') as {
+      identity: unknown
+      bookmarks: Array<{ title: string; url: string; tags: string[] }>
+    }
+    expect(body.identity).toEqual(identity)
+    expect(body.bookmarks).toEqual([
+      { title: '先', url: 'https://first.example/', tags: ['工具'] },
+      { title: '后', url: 'https://last.example/', tags: ['参考'] },
+      { title: '中', url: 'https://mid.example/', tags: ['文档'] },
+    ])
+    expect(parsePortalSource(gateway.puts[1]?.text ?? '').ok).toBe(true)
+  })
 })
 
 describe('读取门户源', () => {

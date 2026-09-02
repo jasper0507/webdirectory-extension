@@ -1,4 +1,9 @@
-import { prepareCapture, prepareUpdate, type BookmarkDraft } from './capture.ts'
+import {
+  prepareCapture,
+  prepareDelete,
+  prepareUpdate,
+  type BookmarkDraft,
+} from './capture.ts'
 import {
   parsePortalSource,
   type Catalog,
@@ -18,6 +23,7 @@ export type { PortalRepo }
 export type PortalSourceIntent =
   | { kind: 'capture'; draft: BookmarkDraft }
   | { kind: 'update'; boundUrl: string; draft: BookmarkDraft }
+  | { kind: 'delete'; boundUrl: string }
 
 export type CommitResult = { ok: true; url: string } | { ok: false; error: string }
 
@@ -67,6 +73,8 @@ function prepareIntent(text: string, intent: PortalSourceIntent) {
       return prepareCapture(text, [intent.draft])
     case 'update':
       return prepareUpdate(text, intent.boundUrl, intent.draft)
+    case 'delete':
+      return prepareDelete(text, intent.boundUrl)
   }
 }
 
@@ -76,6 +84,8 @@ function commitMessage(kind: PortalSourceIntent['kind'], title: string): string 
       return `收录: ${title}`
     case 'update':
       return `改写: ${title}`
+    case 'delete':
+      return `删除: ${title}`
   }
 }
 

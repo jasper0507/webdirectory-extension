@@ -41,6 +41,7 @@ const titleInput = element('title', HTMLInputElement)
 const descLine = element('desc-line', HTMLButtonElement)
 const descriptionInput = element('description', HTMLTextAreaElement)
 const urlInput = element('url', HTMLInputElement)
+const deleteButton = element('delete', HTMLButtonElement)
 const saveButton = element('save', HTMLButtonElement)
 const statusEl = element('status', HTMLElement)
 
@@ -59,6 +60,10 @@ goOptions.addEventListener('click', () => {
 capture.addEventListener('submit', (event) => {
   event.preventDefault()
   void onSave()
+})
+
+deleteButton.addEventListener('click', () => {
+  void onDelete()
 })
 
 tagAdd.addEventListener('click', () => {
@@ -168,7 +173,7 @@ async function boot(): Promise<void> {
 async function onSave(): Promise<void> {
   if (!portalRepo || !catalogReady || busy || tagSelection.selected.length === 0) return
   busy = true
-  syncSave()
+  syncActions()
   setStatus('', 'pending')
   const description = descriptionInput.value.trim()
   const draft = {
@@ -196,11 +201,35 @@ async function onSave(): Promise<void> {
     setStatus('写入失败', 'error')
   }
   busy = false
-  syncSave()
+  syncActions()
 }
 
-function syncSave(): void {
+async function onDelete(): Promise<void> {
+  if (!portalRepo || !catalogReady || busy || boundUrl === null) return
+  busy = true
+  syncActions()
+  setStatus('', 'pending')
+  try {
+    const result = await commitPortalSource(gateway, portalRepo, {
+      kind: 'delete',
+      boundUrl,
+    })
+    if (result.ok) {
+      unbindSlot()
+      setStatus('已删除', 'ok')
+    } else {
+      setStatus(result.error, 'error')
+    }
+  } catch {
+    setStatus('写入失败', 'error')
+  }
+  busy = false
+  syncActions()
+}
+
+function syncActions(): void {
   saveButton.disabled = !catalogReady || busy || tagSelection.selected.length === 0
+  deleteButton.disabled = !catalogReady || busy
 }
 
 function setStatus(text: string, state: 'ok' | 'error' | 'pending'): void {
@@ -212,7 +241,7 @@ function commitTagSelection(next: TagSelection): void {
   tagSelection = next
   renderSelectedTags()
   if (!tagMenu.hidden && tagCreate.hidden) renderTagChoices()
-  syncSave()
+  syncActions()
 }
 
 function renderSelectedTags(): void {
@@ -283,6 +312,13 @@ function closeTagMenu(): void {
 function bindSlot(url: string): void {
   boundUrl = url
   modeEl.textContent = '改写'
+  deleteButton.hidden = false
+}
+
+function unbindSlot(): void {
+  boundUrl = null
+  modeEl.textContent = '收录'
+  deleteButton.hidden = true
 }
 
 function bindDescription(initial: string): void {

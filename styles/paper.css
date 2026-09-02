@@ -428,8 +428,19 @@ body.popup {
   margin: 0;
 }
 
+.actions .delete,
 .actions .save {
   flex: none;
+}
+
+.actions .delete {
+  color: var(--ash);
+  border-bottom-color: transparent;
+}
+
+.actions .delete:hover:not(:disabled) {
+  color: var(--ink);
+  border-bottom-color: var(--line);
 }
 
 /* Options */

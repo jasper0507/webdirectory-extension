@@ -11,7 +11,7 @@
       THESIS: 收录窗按 Raindrop 的左右结构排，拒绝堆叠表单和蓝填充按钮。
       OWN-WORLD: 白日档案纸、墨与灰；金只作线、点、环与焦点；系统无衬线。
       STORY: 未配置只剩一句话和「去选项」；配好后标题是主信息，标签在左，保存右下。
-      FIRST VIEWPORT: 顶栏标明收录或改写；左列短标签；右列站点图标与标题、次行描述、退后的 URL；右下「保存」。
+      FIRST VIEWPORT: 顶栏标明收录或改写；左列短标签；右列站点图标与标题、次行描述、退后的 URL；有绑定时左下「删除」，右下「保存」。
       FORM: Raindrop 结构 + Archive Paper，brief-pinned，未跑 concept-seed。
       FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
     -->
@@ -92,6 +92,9 @@
         </div>
       </div>
       <footer class="actions">
+        <button type="button" class="text-action delete" id="delete" hidden>
+          删除
+        </button>
         <p id="status" role="status" aria-live="polite"></p>
         <button type="submit" class="text-action save" id="save" disabled>
           保存
