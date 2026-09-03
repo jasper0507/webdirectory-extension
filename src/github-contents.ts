@@ -21,7 +21,7 @@ export type ContentsGetResult =
   | { ok: false; reason: GatewayFailureReason }
 
 export type ContentsPutResult =
-  | { ok: true; sha: string }
+  | { ok: true }
   | { ok: false; reason: GatewayFailureReason | 'conflict' }
 
 export type ContentsPathParams = PortalRepo & { path: string }
@@ -140,14 +140,7 @@ export function createGithubContentsGateway(
           }),
         })
         if (response.status === 200 || response.status === 201) {
-          const body = (await response.json()) as {
-            content?: { sha?: unknown }
-          }
-          const nextSha = body.content?.sha
-          return {
-            ok: true,
-            sha: typeof nextSha === 'string' && nextSha.length > 0 ? nextSha : sha,
-          }
+          return { ok: true }
         }
         if (response.status === 409) {
           return { ok: false, reason: 'conflict' }

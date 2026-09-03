@@ -21,30 +21,34 @@ function memoryArea(): StorageArea & { data: Record<string, unknown> } {
     async set(items) {
       Object.assign(data, items)
     },
+    async remove(keys) {
+      for (const key of Array.isArray(keys) ? keys : [keys]) delete data[key]
+    },
   }
 }
 
 describe('配置存储', () => {
-  it('凭证只写入 local，不写入 sync', async () => {
+  it('完整配置一次写入 local', async () => {
     const local = memoryArea()
-    const sync = memoryArea()
-    const store = createChromeConfigurationStore({ local, sync })
+    const store = createChromeConfigurationStore(local)
     await store.save({
       owner: 'acme',
       repo: 'webdirectory',
       credential: 'pat-secret',
       defaultTags: '其他',
     })
-    expect(JSON.stringify(sync.data)).not.toContain('pat-secret')
-    expect(JSON.stringify(local.data)).toContain('pat-secret')
-    expect(JSON.stringify(local.data)).not.toContain('acme')
+    expect(local.data).toEqual({
+      settings: {
+        owner: 'acme',
+        repo: 'webdirectory',
+        credential: 'pat-secret',
+        defaultTags: '其他',
+      },
+    })
   })
 
   it('未保存过时读出厂默认标签「其他」', async () => {
-    const store = createChromeConfigurationStore({
-      local: memoryArea(),
-      sync: memoryArea(),
-    })
+    const store = createChromeConfigurationStore(memoryArea())
     await expect(store.load()).resolves.toEqual({
       owner: '',
       repo: '',
@@ -53,10 +57,9 @@ describe('配置存储', () => {
     })
   })
 
-  it('读回时合并 sync 目标仓与 local 凭证', async () => {
+  it('从 local 读回完整配置', async () => {
     const local = memoryArea()
-    const sync = memoryArea()
-    const store = createChromeConfigurationStore({ local, sync })
+    const store = createChromeConfigurationStore(local)
     await store.save({
       owner: 'acme',
       repo: 'webdirectory',
@@ -68,6 +71,34 @@ describe('配置存储', () => {
       repo: 'webdirectory',
       credential: 'pat-secret',
       defaultTags: '',
+    })
+  })
+
+  it('把旧 sync 目标与 local 凭证迁移为一份 local 配置', async () => {
+    const local = memoryArea()
+    const sync = memoryArea()
+    local.data.credential = 'pat-secret'
+    sync.data.settings = {
+      owner: 'acme',
+      repo: 'webdirectory',
+      defaultTags: '其他',
+    }
+
+    const store = createChromeConfigurationStore(local, sync)
+
+    await expect(store.load()).resolves.toEqual({
+      owner: 'acme',
+      repo: 'webdirectory',
+      credential: 'pat-secret',
+      defaultTags: '其他',
+    })
+    expect(local.data).toEqual({
+      settings: {
+        owner: 'acme',
+        repo: 'webdirectory',
+        credential: 'pat-secret',
+        defaultTags: '其他',
+      },
     })
   })
 })

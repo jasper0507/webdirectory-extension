@@ -1,9 +1,10 @@
-import { findBoundEntry, normalizeTag } from './catalog.ts'
+import { findBoundEntry, normalizeTag, type Catalog } from './catalog.ts'
 import { createExtensionStore } from './chrome-store.ts'
 import {
   commitPortalSource,
   readPortalSource,
   type CommitResult,
+  type PortalFailureKind,
   type PortalRepo,
   type PortalSourceIntent,
 } from './commit-portal-source.ts'
@@ -26,6 +27,7 @@ import {
 } from './tag-selection.ts'
 
 const gate = element('gate', HTMLElement)
+const gateMessage = element('gate-message', HTMLElement)
 const goOptions = element('go-options', HTMLButtonElement)
 const capture = element('capture', HTMLFormElement)
 const captureGrid = element('capture-grid', HTMLElement)
@@ -61,14 +63,18 @@ let tagSelection: TagSelection = createTagSelection({ selected: [], catalog: [] 
 let catalogReady = false
 let busy = false
 let boundUrl: string | null = null
+let openingUrl = ''
 let deleted = false
 let recover: (() => void) | null = null
+let gateAction = openOptions
 
 function openOptions(): void {
   chrome.runtime.openOptionsPage()
 }
 
-goOptions.addEventListener('click', openOptions)
+goOptions.addEventListener('click', () => {
+  gateAction()
+})
 
 statusAction.addEventListener('click', () => {
   recover?.()
@@ -150,6 +156,9 @@ async function boot(): Promise<void> {
   try {
     config = await createExtensionStore().load()
   } catch {
+    gateMessage.textContent = '无法读取配置，请重试。'
+    goOptions.textContent = '重试'
+    gateAction = () => location.reload()
     gate.hidden = false
     return
   }
@@ -182,6 +191,7 @@ async function boot(): Promise<void> {
       }),
       readPortalSource(gateway, portalRepo),
     ])
+    openingUrl = page.url
     titleInput.value = page.title
     urlInput.value = page.url
     if (page.favIconUrl) {
@@ -197,29 +207,13 @@ async function boot(): Promise<void> {
     }
     if (!loaded.ok) {
       bindDescription(page.description)
-      showReadError(loaded.error)
+      showReadError(loaded.error, loaded.kind)
       return
     }
-    const bound = findBoundEntry(loaded.catalog, urlInput.value)
-    catalogReady = true
-    if (bound) {
-      bindSlot(bound.url)
-      titleInput.value = bound.title
-      urlInput.value = bound.url
-      bindDescription(bound.description ?? '')
-      commitTagSelection(
-        createTagSelection({
-          selected: bound.tags,
-          catalog: loaded.catalog.tags,
-        }),
-      )
-    } else {
-      bindDescription(page.description)
-      commitTagSelection(withCatalog(tagSelection, loaded.catalog.tags))
-    }
+    bindCatalog(loaded.catalog, page.description)
     setStatus('门户源已读取', 'ok')
   } catch {
-    showReadError('无法读取当前页或门户源')
+    showReadError('无法读取当前页或门户源', 'retry')
   } finally {
     setCaptureBusy(false)
   }
@@ -234,16 +228,13 @@ async function retryRead(): Promise<void> {
   try {
     const loaded = await readPortalSource(gateway, portalRepo)
     if (!loaded.ok) {
-      showReadError(loaded.error)
+      showReadError(loaded.error, loaded.kind)
       return
     }
-    const bound = findBoundEntry(loaded.catalog, urlInput.value)
-    catalogReady = true
-    if (bound) bindSlot(bound.url)
-    commitTagSelection(withCatalog(tagSelection, loaded.catalog.tags))
+    bindCatalog(loaded.catalog)
     setStatus('门户源已读取', 'ok')
   } catch {
-    showReadError('无法读取门户源')
+    showReadError('无法读取门户源', 'retry')
   } finally {
     busy = false
     setCaptureBusy(false)
@@ -303,11 +294,12 @@ async function writePortal(
     else {
       showWriteError(
         result.error,
+        result.kind,
         intent.kind === 'delete' ? onDelete : onSave,
       )
     }
   } catch {
-    showWriteError('写入失败', intent.kind === 'delete' ? onDelete : onSave)
+    showWriteError('写入失败', 'retry', intent.kind === 'delete' ? onDelete : onSave)
   } finally {
     busy = false
     setCaptureBusy(false)
@@ -366,41 +358,52 @@ function clearFieldError(input: HTMLInputElement, messageEl: HTMLElement): void 
   messageEl.hidden = true
 }
 
-function isSettingsError(error: string): boolean {
-  return error.includes('凭证') || error === '找不到仓库或门户源'
-}
-
-function showReadError(error: string): void {
-  setStatus(
-    `错误：${error}`,
-    'error',
-    isSettingsError(error)
-      ? { label: '去选项', run: openOptions }
-      : { label: '重试', run: () => void retryRead() },
-  )
-}
-
-function showWriteError(error: string, retry: () => Promise<void>): void {
-  if (error.startsWith('标题')) {
-    setFieldError(titleInput, titleError, `错误：${error}，请修改标题`)
-    setStatus('未写入，请修改标题', 'error')
-    titleInput.focus()
-    return
-  }
-  if (error.startsWith('地址') || error.startsWith('必须是 http')) {
-    setFieldError(urlInput, urlError, `错误：${error}，请修改 URL`)
-    setStatus('未写入，请修改 URL', 'error')
-    urlInput.focus()
-    return
-  }
-  if (error.includes('门户源无效')) {
+function showReadError(error: string, kind: PortalFailureKind): void {
+  if (kind === 'source') {
     setStatus(`错误：${error}，请先修复 public/portal.json`, 'error')
     return
   }
   setStatus(
     `错误：${error}`,
     'error',
-    isSettingsError(error)
+    kind === 'settings'
+      ? { label: '去选项', run: openOptions }
+      : { label: '重试', run: () => void retryRead() },
+  )
+}
+
+function showWriteError(
+  error: string,
+  kind: PortalFailureKind,
+  retry: () => Promise<void>,
+): void {
+  if (kind === 'title') {
+    setFieldError(titleInput, titleError, `错误：${error}，请修改标题`)
+    setStatus('未写入，请修改标题', 'error')
+    titleInput.focus()
+    return
+  }
+  if (kind === 'url') {
+    setFieldError(urlInput, urlError, `错误：${error}，请修改 URL`)
+    setStatus('未写入，请修改 URL', 'error')
+    urlInput.focus()
+    return
+  }
+  if (kind === 'tags') {
+    tagError.textContent = `错误：${error}`
+    tagError.hidden = false
+    setStatus('未写入，请添加标签', 'error')
+    tagAdd.focus()
+    return
+  }
+  if (kind === 'source') {
+    setStatus(`错误：${error}，请先修复 public/portal.json`, 'error')
+    return
+  }
+  setStatus(
+    `错误：${error}`,
+    'error',
+    kind === 'settings'
       ? { label: '去选项', run: openOptions }
       : { label: '重试', run: () => void retry() },
   )
@@ -500,10 +503,26 @@ function closeTagMenu(restoreFocus = false): void {
 
 function bindSlot(url: string): void {
   boundUrl = url
+  tagSelection = { ...tagSelection, prefill: false }
   deleted = false
   modeEl.textContent = '改写'
   deleteButton.hidden = false
   saveButton.textContent = '保存'
+}
+
+function bindCatalog(catalog: Catalog, initialDescription?: string): void {
+  const bound = findBoundEntry(catalog, openingUrl)
+  catalogReady = true
+  if (bound) {
+    bindSlot(bound.url)
+    titleInput.value = bound.title
+    urlInput.value = bound.url
+    bindDescription(bound.description ?? '')
+    commitTagSelection(createTagSelection({ selected: bound.tags, catalog: catalog.tags }))
+    return
+  }
+  if (initialDescription !== undefined) bindDescription(initialDescription)
+  commitTagSelection(withCatalog(tagSelection, catalog.tags))
 }
 
 function unbindSlot(): void {

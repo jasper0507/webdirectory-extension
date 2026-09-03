@@ -59,7 +59,7 @@ describe('门户源提交', () => {
     ])
     const gateway = fakeGithub({
       get: () => ({ ok: true, sha: 'sha-1', text: current }),
-      put: () => ({ ok: true, sha: 'sha-2' }),
+      put: () => ({ ok: true }),
     })
 
     const result = await commitPortalSource(gateway, repo, {
@@ -103,7 +103,7 @@ describe('门户源提交', () => {
       kind: 'capture',
       draft: { title: '新增', url: 'https://new.example/', tags: ['文档'] },
     })
-    expect(result).toEqual({ ok: false, error: '门户源无效，未写入' })
+    expect(result).toEqual({ ok: false, kind: 'source', error: '门户源无效，未写入' })
     expect(gateway.puts).toHaveLength(0)
   })
 
@@ -118,21 +118,21 @@ describe('门户源提交', () => {
       kind: 'capture',
       draft: { title: '新名字', url: 'https://old.example/#hash', tags: ['文档'] },
     })
-    expect(duplicate).toEqual({ ok: false, error: '地址与其它书签重复' })
+    expect(duplicate).toEqual({ ok: false, kind: 'url', error: '地址与其它书签重复' })
     expect(gateway.puts).toHaveLength(0)
 
     const duplicateTitle = await commitPortalSource(gateway, repo, {
       kind: 'capture',
       draft: { title: '已有', url: 'https://new.example/', tags: ['文档'] },
     })
-    expect(duplicateTitle).toEqual({ ok: false, error: '标题与其它书签重复' })
+    expect(duplicateTitle).toEqual({ ok: false, kind: 'title', error: '标题与其它书签重复' })
     expect(gateway.puts).toHaveLength(0)
 
     const untitled = await commitPortalSource(gateway, repo, {
       kind: 'capture',
       draft: { title: '另一条', url: 'https://new.example/', tags: [] },
     })
-    expect(untitled).toEqual({ ok: false, error: '必须至少有一个标签' })
+    expect(untitled).toEqual({ ok: false, kind: 'tags', error: '必须至少有一个标签' })
     expect(gateway.puts).toHaveLength(0)
   })
 
@@ -152,7 +152,7 @@ describe('门户源提交', () => {
           current = { sha: 'sha-2', text: concurrent }
           return { ok: false, reason: 'conflict' }
         }
-        return { ok: true, sha: 'sha-3' }
+        return { ok: true }
       },
     })
 
@@ -193,7 +193,7 @@ describe('门户源提交', () => {
       draft: { title: '新增', url: 'https://new.example/', tags: ['文档'] },
     })
 
-    expect(result).toEqual({ ok: false, error: '与其它写入冲突，未覆盖' })
+    expect(result).toEqual({ ok: false, kind: 'retry', error: '与其它写入冲突，未覆盖' })
     expect(gets).toBe(2)
     expect(gateway.puts).toHaveLength(2)
   })
@@ -211,7 +211,7 @@ describe('门户源提交', () => {
     ])
     const gateway = fakeGithub({
       get: () => ({ ok: true, sha: 'sha-1', text: current }),
-      put: () => ({ ok: true, sha: 'sha-2' }),
+      put: () => ({ ok: true }),
     })
 
     const result = await commitPortalSource(gateway, repo, {
@@ -262,7 +262,7 @@ describe('门户源提交', () => {
       boundUrl: 'https://mid.example/',
       draft: { title: '先', url: 'https://mid.example/', tags: ['文档'] },
     })
-    expect(duplicateTitle).toEqual({ ok: false, error: '标题与其它书签重复' })
+    expect(duplicateTitle).toEqual({ ok: false, kind: 'title', error: '标题与其它书签重复' })
     expect(gateway.puts).toHaveLength(0)
 
     const duplicateUrl = await commitPortalSource(gateway, repo, {
@@ -270,7 +270,7 @@ describe('门户源提交', () => {
       boundUrl: 'https://mid.example/',
       draft: { title: '中', url: 'https://first.example/#other', tags: ['文档'] },
     })
-    expect(duplicateUrl).toEqual({ ok: false, error: '地址与其它书签重复' })
+    expect(duplicateUrl).toEqual({ ok: false, kind: 'url', error: '地址与其它书签重复' })
     expect(gateway.puts).toHaveLength(0)
   })
 
@@ -282,7 +282,7 @@ describe('门户源提交', () => {
     ])
     const gateway = fakeGithub({
       get: () => ({ ok: true, sha: 'sha-1', text: current }),
-      put: () => ({ ok: true, sha: 'sha-2' }),
+      put: () => ({ ok: true }),
     })
 
     const result = await commitPortalSource(gateway, repo, {
@@ -320,7 +320,7 @@ describe('门户源提交', () => {
       get: () => ({ ok: true, ...current }),
       put: (call) => {
         current = { sha: `sha-${String(gateway.puts.length + 1)}`, text: call.text }
-        return { ok: true, sha: current.sha }
+        return { ok: true }
       },
     })
 
@@ -363,14 +363,14 @@ describe('门户源提交', () => {
       kind: 'delete',
       boundUrl: 'https://missing.example/',
     })
-    expect(deleted).toEqual({ ok: false, error: '找不到要删除的书签' })
+    expect(deleted).toEqual({ ok: false, kind: 'retry', error: '找不到要删除的书签' })
 
     const updated = await commitPortalSource(gateway, repo, {
       kind: 'update',
       boundUrl: 'https://missing.example/',
       draft: { title: '新', url: 'https://new.example/', tags: ['文档'] },
     })
-    expect(updated).toEqual({ ok: false, error: '找不到要改写的书签' })
+    expect(updated).toEqual({ ok: false, kind: 'retry', error: '找不到要改写的书签' })
     expect(gateway.puts).toHaveLength(0)
   })
 })
@@ -397,6 +397,7 @@ describe('读取门户源', () => {
     })
     await expect(readPortalSource(gateway, repo)).resolves.toEqual({
       ok: false,
+      kind: 'source',
       error: '门户源无效',
     })
     expect(gateway.puts).toHaveLength(0)

@@ -35,6 +35,7 @@ async function boot(): Promise<void> {
     defaultTagsInput.value = config.defaultTags
   } catch {
     defaultTagsInput.value = FACTORY_DEFAULT_TAGS
+    setStatus('无法读取配置，请重新加载页面', 'error')
   }
   syncSave()
 }

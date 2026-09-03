@@ -137,7 +137,7 @@ describe('门户源写入', () => {
         message: '收录: 试厅',
         text,
       }),
-    ).resolves.toEqual({ ok: true, sha: 'def456' })
+    ).resolves.toEqual({ ok: true })
   })
 
   it('PUT 409 视为 sha 冲突', async () => {
@@ -151,5 +151,23 @@ describe('门户源写入', () => {
         text: '{}',
       }),
     ).resolves.toEqual({ ok: false, reason: 'conflict' })
+  })
+
+  it('PUT 2xx 即视为成功，不读取无用的响应正文', async () => {
+    const gateway = createGithubContentsGateway(async () => ({
+      status: 200,
+      async json() {
+        throw new Error('response body interrupted')
+      },
+    }) as Response)
+    await expect(
+      gateway.put({
+        ...repo,
+        path: PORTAL_SOURCE_PATH,
+        sha: 'abc123',
+        message: '收录: 试厅',
+        text: '{}',
+      }),
+    ).resolves.toEqual({ ok: true })
   })
 })

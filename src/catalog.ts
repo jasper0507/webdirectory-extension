@@ -75,6 +75,7 @@ function standardizeUrl(url: string): string | null {
   try {
     const parsed = new URL(url.trim())
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+    if (parsed.username || parsed.password) return null
     if (parsed.pathname.length > 1 && parsed.pathname.endsWith('/')) {
       parsed.pathname = parsed.pathname.replace(/\/+$/, '')
       if (parsed.pathname === '') parsed.pathname = '/'

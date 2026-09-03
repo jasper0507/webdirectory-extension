@@ -15,6 +15,7 @@ import {
   type ContentsGateway,
   type ContentsGetResult,
   type ContentsReader,
+  type GatewayFailureReason,
   type PortalRepo,
 } from './github-contents.ts'
 
@@ -25,24 +26,41 @@ export type PortalSourceIntent =
   | { kind: 'update'; boundUrl: string; draft: BookmarkDraft }
   | { kind: 'delete'; boundUrl: string }
 
-export type CommitResult = { ok: true; url: string } | { ok: false; error: string }
+export type PortalFailureKind = 'settings' | 'title' | 'url' | 'tags' | 'source' | 'retry'
+
+export type PortalFailure = {
+  ok: false
+  kind: PortalFailureKind
+  error: string
+}
+
+export type CommitResult = { ok: true; url: string } | PortalFailure
 
 export type ReadPortalSourceResult =
   | { ok: true; catalog: Catalog }
-  | { ok: false; error: string }
+  | PortalFailure
 
-function formatCandidateError(issues: PortalSourceIssue[]): string {
+function portalFailure(kind: PortalFailureKind, error: string): PortalFailure {
+  return { ok: false, kind, error }
+}
+
+function contentsFailure(reason: GatewayFailureReason | 'conflict', fallback: string): PortalFailure {
+  const kind = reason === 'unauthorized' || reason === 'not-found' ? 'settings' : 'retry'
+  return portalFailure(kind, describeContentsFailure(reason, fallback))
+}
+
+function formatCandidateError(issues: PortalSourceIssue[]): PortalFailure {
   const first = issues[0]
-  if (!first) return '门户源无效，未写入'
-  if (first.code === 'duplicate-url') return '地址与其它书签重复'
-  if (first.code === 'duplicate-title') return '标题与其它书签重复'
+  if (!first) return portalFailure('source', '门户源无效，未写入')
+  if (first.code === 'duplicate-url') return portalFailure('url', '地址与其它书签重复')
+  if (first.code === 'duplicate-title') return portalFailure('title', '标题与其它书签重复')
   if (first.code === 'invalid-value' && first.path.endsWith('/tags')) {
-    return '必须至少有一个标签'
+    return portalFailure('tags', '必须至少有一个标签')
   }
   if (first.code === 'invalid-value' && first.path.endsWith('/url')) {
-    return '必须是 http(s) 地址'
+    return portalFailure('url', '必须是 http(s) 地址')
   }
-  return first.message.replace(/。$/, '')
+  return portalFailure('retry', first.message.replace(/。$/, ''))
 }
 
 function pathParams(repo: PortalRepo) {
@@ -60,10 +78,10 @@ export async function readPortalSource(
 ): Promise<ReadPortalSourceResult> {
   const file = await gateway.get(pathParams(repo))
   if (!file.ok) {
-    return { ok: false, error: describeContentsFailure(file.reason, '无法读取门户源') }
+    return contentsFailure(file.reason, '无法读取门户源')
   }
   const parsed = parsePortalSource(file.text)
-  if (!parsed.ok) return { ok: false, error: '门户源无效' }
+  if (!parsed.ok) return portalFailure('source', '门户源无效')
   return { ok: true, catalog: parsed.catalog }
 }
 
@@ -97,17 +115,17 @@ async function applyIntent(
 ): Promise<CommitResult | 'conflict'> {
   const current = parsePortalSource(file.text)
   if (!current.ok) {
-    return { ok: false, error: '门户源无效，未写入' }
+    return portalFailure('source', '门户源无效，未写入')
   }
 
   const prepared = prepareIntent(file.text, intent)
   if (!prepared.ok) {
-    return { ok: false, error: formatCandidateError(prepared.issues) }
+    return formatCandidateError(prepared.issues)
   }
 
   const affected = prepared.entries[0]
   if (!affected) {
-    return { ok: false, error: '门户源无效，未写入' }
+    return portalFailure('source', '门户源无效，未写入')
   }
 
   const put = await gateway.put({
@@ -118,10 +136,7 @@ async function applyIntent(
   })
   if (put.ok) return { ok: true, url: affected.url }
   if (put.reason === 'conflict') return 'conflict'
-  return {
-    ok: false,
-    error: describeContentsFailure(put.reason, '写入失败'),
-  }
+  return contentsFailure(put.reason, '写入失败')
 }
 
 export async function commitPortalSource(
@@ -131,7 +146,7 @@ export async function commitPortalSource(
 ): Promise<CommitResult> {
   const file = await gateway.get(pathParams(repo))
   if (!file.ok) {
-    return { ok: false, error: describeContentsFailure(file.reason, '无法读取门户源') }
+    return contentsFailure(file.reason, '无法读取门户源')
   }
 
   const first = await applyIntent(gateway, repo, intent, file)
@@ -139,12 +154,12 @@ export async function commitPortalSource(
 
   const latest = await gateway.get(pathParams(repo))
   if (!latest.ok) {
-    return { ok: false, error: describeContentsFailure(latest.reason, '无法读取门户源') }
+    return contentsFailure(latest.reason, '无法读取门户源')
   }
 
   const second = await applyIntent(gateway, repo, intent, latest)
   if (second === 'conflict') {
-    return { ok: false, error: describeContentsFailure('conflict', '与其它写入冲突，未覆盖') }
+    return contentsFailure('conflict', '与其它写入冲突，未覆盖')
   }
   return second
 }

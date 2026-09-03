@@ -118,6 +118,22 @@ describe('parsePortalSource', () => {
       }),
     )
   })
+
+  it('拒绝含用户凭据的公开 URL', () => {
+    const parsed = parsePortalSource(
+      portalSource([
+        { title: '私密地址', url: 'https://alice:secret@example.com/', tags: ['工具'] },
+      ]),
+    )
+    expect(parsed.ok).toBe(false)
+    if (parsed.ok) return
+    expect(parsed.issues).toContainEqual(
+      expect.objectContaining({
+        path: '/bookmarks/0/url',
+        code: 'invalid-value',
+      }),
+    )
+  })
 })
 
 describe('findBoundEntry', () => {

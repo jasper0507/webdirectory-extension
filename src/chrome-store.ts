@@ -4,59 +4,71 @@ import {
   type ConfigurationStore,
 } from './configuration.ts'
 
-const SYNC_KEY = 'settings'
-const LOCAL_KEY = 'credential'
+const SETTINGS_KEY = 'settings'
+const LEGACY_CREDENTIAL_KEY = 'credential'
 
 export type StorageArea = {
   get(keys?: string | string[] | null): Promise<Record<string, unknown>>
   set(items: Record<string, unknown>): Promise<void>
-}
-
-export type BrowserStorage = {
-  local: StorageArea
-  sync: StorageArea
+  remove(keys: string | string[]): Promise<void>
 }
 
 export function createExtensionStore(): ConfigurationStore {
-  return createChromeConfigurationStore({
-    local: wrapArea(chrome.storage.local),
-    sync: wrapArea(chrome.storage.sync),
-  })
+  return createChromeConfigurationStore(
+    wrapArea(chrome.storage.local),
+    wrapArea(chrome.storage.sync),
+  )
 }
 
 export function createChromeConfigurationStore(
-  storage: BrowserStorage,
+  storage: StorageArea,
+  legacyStorage?: StorageArea,
 ): ConfigurationStore {
   return {
     async load() {
-      const [syncResult, localResult] = await Promise.all([
-        storage.sync.get(SYNC_KEY),
-        storage.local.get(LOCAL_KEY),
-      ])
-      const target = asRecord(syncResult[SYNC_KEY])
-      const credential = localResult[LOCAL_KEY]
-      return {
-        owner: asString(target.owner),
-        repo: asString(target.repo),
-        defaultTags:
-          typeof target.defaultTags === 'string'
-            ? target.defaultTags
-            : FACTORY_DEFAULT_TAGS,
-        credential: asString(credential),
-      } satisfies Configuration
+      const result = await storage.get([SETTINGS_KEY, LEGACY_CREDENTIAL_KEY])
+      if (Object.hasOwn(result, SETTINGS_KEY)) {
+        if (Object.hasOwn(result, LEGACY_CREDENTIAL_KEY)) {
+          await storage.remove(LEGACY_CREDENTIAL_KEY)
+        }
+        return readConfiguration(asRecord(result[SETTINGS_KEY]))
+      }
+
+      const legacy = legacyStorage ? await legacyStorage.get(SETTINGS_KEY) : {}
+      if (
+        Object.hasOwn(legacy, SETTINGS_KEY) ||
+        Object.hasOwn(result, LEGACY_CREDENTIAL_KEY)
+      ) {
+        const config = readConfiguration(
+          asRecord(legacy[SETTINGS_KEY]),
+          result[LEGACY_CREDENTIAL_KEY],
+        )
+        await storage.set({ [SETTINGS_KEY]: config })
+        await storage.remove(LEGACY_CREDENTIAL_KEY)
+        return config
+      }
+      return readConfiguration({})
     },
     async save(config) {
-      await storage.sync.set({
-        [SYNC_KEY]: {
-          owner: config.owner,
-          repo: config.repo,
-          defaultTags: config.defaultTags,
-        },
-      })
-      await storage.local.set({
-        [LOCAL_KEY]: config.credential,
+      await storage.set({
+        [SETTINGS_KEY]: config,
       })
     },
+  }
+}
+
+function readConfiguration(
+  settings: Record<string, unknown>,
+  credential: unknown = settings.credential,
+): Configuration {
+  return {
+    owner: asString(settings.owner),
+    repo: asString(settings.repo),
+    defaultTags:
+      typeof settings.defaultTags === 'string'
+        ? settings.defaultTags
+        : FACTORY_DEFAULT_TAGS,
+    credential: asString(credential),
   }
 }
 
@@ -80,6 +92,9 @@ function wrapArea(area: chrome.storage.StorageArea): StorageArea {
     },
     set(items) {
       return area.set(items)
+    },
+    remove(keys) {
+      return area.remove(keys)
     },
   }
 }

@@ -59,7 +59,7 @@ describe('标签选择', () => {
     expect(duplicate.selected).toEqual(['工具', '笔记', '文档'])
   })
 
-  it('只查看下拉不会改动预填，真正选择时才替换预填', () => {
+  it('第一次打开下拉会清空未改动的预填', () => {
     const next = revealChoices(
       createTagSelection({
         selected: ['其他'],
@@ -70,12 +70,13 @@ describe('标签选择', () => {
         prefill: true,
       }),
     )
-    expect(next.selected).toEqual(['其他'])
-    expect(availableTags(next).map((tag) => tag.name)).toEqual(['文档'])
+    expect(next.selected).toEqual([])
+    expect(next.prefill).toBe(false)
+    expect(availableTags(next).map((tag) => tag.name)).toEqual(['其他', '文档'])
     expect(addTag(next, '文档').selected).toEqual(['文档'])
   })
 
-  it('点掉预填会先整组清空，查看新建入口不会', () => {
+  it('点掉预填或打开下拉都会清空整组预填', () => {
     const prefilled = createTagSelection({
       selected: ['其他', '阅读'],
       catalog: [
@@ -86,7 +87,7 @@ describe('标签选择', () => {
       prefill: true,
     })
     expect(removeTag(prefilled, '其他').selected).toEqual([])
-    expect(revealChoices(prefilled).selected).toEqual(['其他', '阅读'])
+    expect(revealChoices(prefilled).selected).toEqual([])
   })
 
   it('未改动预填时加入标签会先清空再加入', () => {
@@ -139,7 +140,7 @@ describe('标签选择', () => {
     expect(selection.selected).toEqual(['文档', '工具'])
   })
 
-  it('目录标签后到时不改已选，查看选项也保留预填', () => {
+  it('目录标签后到时不改已选，打开下拉才清空预填', () => {
     const next = withCatalog(
       createTagSelection({ selected: ['其他'], catalog: [], prefill: true }),
       [
@@ -149,7 +150,7 @@ describe('标签选择', () => {
     )
     expect(next.selected).toEqual(['其他'])
     expect(availableTags(next).map((tag) => tag.name)).toEqual(['文档'])
-    expect(revealChoices(next).selected).toEqual(['其他'])
+    expect(revealChoices(next).selected).toEqual([])
   })
 
   it('空白名字不能加入', () => {
