@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parsePortalSource } from './catalog.ts'
-import { commitPortalSource, readPortalSource } from './commit-portal-source.ts'
+import { commitPortalSource, readPortalSource } from './portal-source.ts'
 import {
   PORTAL_SOURCE_PATH,
   type ContentsGateway,

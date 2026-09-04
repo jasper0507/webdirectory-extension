@@ -1,11 +1,7 @@
 import {
-  prepareCapture,
-  prepareDelete,
-  prepareUpdate,
-  type BookmarkDraft,
-} from './capture.ts'
-import {
+  findBoundEntry,
   parsePortalSource,
+  type BookmarkEntry,
   type Catalog,
   type PortalSourceIssue,
 } from './catalog.ts'
@@ -19,7 +15,7 @@ import {
   type PortalRepo,
 } from './github-contents.ts'
 
-export type { PortalRepo }
+type BookmarkDraft = Pick<BookmarkEntry, 'title' | 'url' | 'tags' | 'description'>
 
 export type PortalSourceIntent =
   | { kind: 'capture'; draft: BookmarkDraft }
@@ -28,7 +24,7 @@ export type PortalSourceIntent =
 
 export type PortalFailureKind = 'settings' | 'title' | 'url' | 'tags' | 'source' | 'retry'
 
-export type PortalFailure = {
+type PortalFailure = {
   ok: false
   kind: PortalFailureKind
   error: string
@@ -39,6 +35,15 @@ export type CommitResult = { ok: true; url: string } | PortalFailure
 export type ReadPortalSourceResult =
   | { ok: true; catalog: Catalog }
   | PortalFailure
+
+type PortalDocument = {
+  identity: unknown
+  bookmarks: unknown[]
+}
+
+type Preparation =
+  | PortalFailure
+  | { ok: true; jsonText: string; entry: BookmarkDraft }
 
 function portalFailure(kind: PortalFailureKind, error: string): PortalFailure {
   return { ok: false, kind, error }
@@ -63,6 +68,15 @@ function formatCandidateError(issues: PortalSourceIssue[]): PortalFailure {
   return portalFailure('retry', first.message.replace(/。$/, ''))
 }
 
+function sourceEntry(entry: BookmarkEntry): BookmarkDraft {
+  return {
+    title: entry.title,
+    url: entry.url,
+    tags: entry.tags,
+    ...(entry.description ? { description: entry.description } : {}),
+  }
+}
+
 function pathParams(repo: PortalRepo) {
   return {
     owner: repo.owner,
@@ -85,14 +99,50 @@ export async function readPortalSource(
   return { ok: true, catalog: parsed.catalog }
 }
 
-function prepareIntent(text: string, intent: PortalSourceIntent) {
+function prepareIntent(text: string, intent: PortalSourceIntent): Preparation {
+  const current = parsePortalSource(text)
+  if (!current.ok) return portalFailure('source', '门户源无效，未写入')
+
+  const document = JSON.parse(text) as PortalDocument
+  const bookmarks = [...document.bookmarks]
+  let index: number
+  let affected: BookmarkEntry | undefined
+
   switch (intent.kind) {
-    case 'capture':
-      return prepareCapture(text, [intent.draft])
+    case 'capture': {
+      index = bookmarks.length
+      bookmarks.push(intent.draft)
+      break
+    }
     case 'update':
-      return prepareUpdate(text, intent.boundUrl, intent.draft)
-    case 'delete':
-      return prepareDelete(text, intent.boundUrl)
+    case 'delete': {
+      const bound = findBoundEntry(current.catalog, intent.boundUrl)
+      if (!bound) {
+        return portalFailure('retry', `找不到要${intent.kind === 'update' ? '改写' : '删除'}的书签`)
+      }
+      index = current.catalog.entries.indexOf(bound)
+      if (intent.kind === 'update') {
+        bookmarks[index] = intent.draft
+      } else {
+        bookmarks.splice(index, 1)
+        affected = bound
+      }
+      break
+    }
+  }
+
+  const candidate = parsePortalSource(JSON.stringify({ ...document, bookmarks }))
+  if (!candidate.ok) return formatCandidateError(candidate.issues)
+
+  affected ??= candidate.catalog.entries[index]
+  if (!affected) return portalFailure('source', '门户源无效，未写入')
+
+  const entry = sourceEntry(affected)
+  if (intent.kind !== 'delete') bookmarks[index] = entry
+  return {
+    ok: true,
+    entry,
+    jsonText: `${JSON.stringify({ ...document, bookmarks }, null, 2)}\n`,
   }
 }
 
@@ -113,28 +163,16 @@ async function applyIntent(
   intent: PortalSourceIntent,
   file: Extract<ContentsGetResult, { ok: true }>,
 ): Promise<CommitResult | 'conflict'> {
-  const current = parsePortalSource(file.text)
-  if (!current.ok) {
-    return portalFailure('source', '门户源无效，未写入')
-  }
-
   const prepared = prepareIntent(file.text, intent)
-  if (!prepared.ok) {
-    return formatCandidateError(prepared.issues)
-  }
-
-  const affected = prepared.entries[0]
-  if (!affected) {
-    return portalFailure('source', '门户源无效，未写入')
-  }
+  if (!prepared.ok) return prepared
 
   const put = await gateway.put({
     ...pathParams(repo),
     sha: file.sha,
-    message: commitMessage(intent.kind, affected.title),
+    message: commitMessage(intent.kind, prepared.entry.title),
     text: prepared.jsonText,
   })
-  if (put.ok) return { ok: true, url: affected.url }
+  if (put.ok) return { ok: true, url: prepared.entry.url }
   if (put.reason === 'conflict') return 'conflict'
   return contentsFailure(put.reason, '写入失败')
 }

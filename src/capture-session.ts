@@ -9,7 +9,7 @@ import {
   type PortalFailureKind,
   type PortalSourceIntent,
   type ReadPortalSourceResult,
-} from './commit-portal-source.ts'
+} from './portal-source.ts'
 import { parseDefaultTags } from './configuration.ts'
 import type { CurrentPage } from './page.ts'
 

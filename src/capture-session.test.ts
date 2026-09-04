@@ -6,7 +6,7 @@ import {
   type CaptureSession,
   type CaptureView,
 } from './capture-session.ts'
-import type { ReadPortalSourceResult } from './commit-portal-source.ts'
+import type { ReadPortalSourceResult } from './portal-source.ts'
 import { samplePortalSource } from './portal-fixture.ts'
 
 const target = { owner: 'acme', repo: 'portal' }
@@ -142,6 +142,18 @@ describe('收录窗会话', () => {
       menu: 'closed',
     })
     expect(selected.focus).toBe('tag-add')
+  })
+
+  it('开始修改预填会清空整组；改写条目的标签不受影响', () => {
+    const capturing = opened([], '其他，阅读')
+    const removed = capturing.session.dispatch({ kind: 'remove-tag', name: '其他' })
+    expect(view(removed).tags.selected).toEqual([])
+
+    const updating = opened([
+      { title: '已收录', url: page.url, tags: ['文档', '工具'] },
+    ])
+    const menu = updating.session.dispatch({ kind: 'toggle-tag-menu' })
+    expect(view(menu).tags.selected).toEqual(['文档', '工具'])
   })
 
   it('标签新建会规范化去重，移除最后一个标签会给出可见错误', () => {

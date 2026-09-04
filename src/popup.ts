@@ -11,7 +11,7 @@ import {
 import {
   commitPortalSource,
   readPortalSource,
-} from './commit-portal-source.ts'
+} from './portal-source.ts'
 import { isConfigurationComplete } from './configuration.ts'
 import { element } from './dom.ts'
 import { createGithubContentsGateway } from './github-contents.ts'
