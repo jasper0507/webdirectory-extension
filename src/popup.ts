@@ -1,30 +1,21 @@
-import { findBoundEntry, normalizeTag, type Catalog } from './catalog.ts'
 import { createExtensionStore } from './chrome-store.ts'
+import {
+  startCaptureSession,
+  type CaptureEffect,
+  type CaptureMessage,
+  type CaptureOutcome,
+  type CaptureOutput,
+  type CaptureView,
+  type FocusTarget,
+} from './capture-session.ts'
 import {
   commitPortalSource,
   readPortalSource,
-  type CommitResult,
-  type PortalFailureKind,
-  type PortalRepo,
-  type PortalSourceIntent,
 } from './commit-portal-source.ts'
-import {
-  isConfigurationComplete,
-  parseDefaultTags,
-  type Configuration,
-} from './configuration.ts'
+import { isConfigurationComplete } from './configuration.ts'
 import { element } from './dom.ts'
 import { createGithubContentsGateway } from './github-contents.ts'
 import { readCurrentPage } from './page.ts'
-import {
-  addTag,
-  availableTags,
-  createTagSelection,
-  removeTag,
-  revealChoices,
-  withCatalog,
-  type TagSelection,
-} from './tag-selection.ts'
 
 const gate = element('gate', HTMLElement)
 const gateMessage = element('gate-message', HTMLElement)
@@ -56,484 +47,322 @@ const statusEl = element('status', HTMLElement)
 const statusMessage = element('status-message', HTMLElement)
 const statusAction = element('status-action', HTMLButtonElement)
 
+const store = createExtensionStore()
 const gateway = createGithubContentsGateway(fetch)
+const { session, output: initialOutput } = startCaptureSession()
 
-let portalRepo: PortalRepo | null = null
-let tagSelection: TagSelection = createTagSelection({ selected: [], catalog: [] })
-let catalogReady = false
-let busy = false
-let boundUrl: string | null = null
-let openingUrl = ''
-let deleted = false
-let recover: (() => void) | null = null
-let gateAction = openOptions
-
-function openOptions(): void {
-  chrome.runtime.openOptionsPage()
-}
+let credential = ''
+let renderedFaviconUrl = ''
+let failedFaviconUrl = ''
 
 goOptions.addEventListener('click', () => {
-  gateAction()
+  dispatch({ kind: 'recover' })
 })
 
 statusAction.addEventListener('click', () => {
-  recover?.()
+  dispatch({ kind: 'recover' })
 })
 
 capture.addEventListener('submit', (event) => {
   event.preventDefault()
-  if (!validateDraft()) return
-  void onSave()
+  dispatch({ kind: 'save' })
 })
 
 titleInput.addEventListener('input', () => {
-  titleInput.setCustomValidity('')
-  clearFieldError(titleInput, titleError)
+  dispatch({ kind: 'edit', field: 'title', value: titleInput.value })
 })
 
 urlInput.addEventListener('input', () => {
-  urlInput.setCustomValidity('')
-  clearFieldError(urlInput, urlError)
+  dispatch({ kind: 'edit', field: 'url', value: urlInput.value })
+})
+
+descriptionInput.addEventListener('input', () => {
+  dispatch({
+    kind: 'edit',
+    field: 'description',
+    value: descriptionInput.value,
+  })
 })
 
 titleInput.addEventListener('invalid', () => {
-  setFieldError(titleInput, titleError, '错误：请输入标题')
+  dispatch({ kind: 'field-invalid', field: 'title' })
 })
 
 urlInput.addEventListener('invalid', () => {
-  setFieldError(urlInput, urlError, '错误：请输入 http(s) 地址')
+  dispatch({ kind: 'field-invalid', field: 'url' })
 })
 
 deleteButton.addEventListener('click', () => {
-  void onDelete()
+  dispatch({ kind: 'delete' })
 })
 
 descLine.addEventListener('click', () => {
-  descLine.hidden = true
-  descriptionInput.hidden = false
-  descriptionInput.focus()
+  dispatch({ kind: 'show-description' })
 })
 
 tagAdd.addEventListener('click', () => {
-  if (tagMenu.hidden) openTagMenu()
-  else closeTagMenu()
+  dispatch({ kind: 'toggle-tag-menu' })
 })
 
 tagCreateOpen.addEventListener('click', () => {
-  showTagCreate()
+  dispatch({ kind: 'show-tag-creation' })
 })
 
 tagCreateConfirm.addEventListener('click', () => {
-  confirmNewTag()
+  dispatch({ kind: 'confirm-new-tag' })
 })
 
 tagCreateName.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter') {
-    event.preventDefault()
-    confirmNewTag()
-  }
+  if (event.key !== 'Enter') return
+  event.preventDefault()
+  dispatch({ kind: 'confirm-new-tag' })
 })
 
 tagCreateName.addEventListener('input', () => {
-  clearFieldError(tagCreateName, tagCreateError)
+  dispatch({ kind: 'edit-new-tag', value: tagCreateName.value })
 })
 
 document.addEventListener('click', (event) => {
   if (!(event.target instanceof Node) || tagColumn.contains(event.target)) return
-  closeTagMenu()
+  dispatch({ kind: 'dismiss-tag-menu' })
 })
 
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape' || tagMenu.hidden) return
   event.preventDefault()
-  closeTagMenu(true)
+  dispatch({ kind: 'cancel-tag-menu' })
 })
 
-void boot()
+present(initialOutput)
 
-async function boot(): Promise<void> {
-  let config: Configuration
-  try {
-    config = await createExtensionStore().load()
-  } catch {
-    gateMessage.textContent = '无法读取配置，请重试。'
-    goOptions.textContent = '重试'
-    gateAction = () => location.reload()
-    gate.hidden = false
+function dispatch(message: CaptureMessage): void {
+  present(session.dispatch(message))
+}
+
+function present(output: CaptureOutput): void {
+  render(output.view)
+  if (output.reportValidity) capture.reportValidity()
+  if (output.focus) focus(output.focus)
+  if (output.effect) void execute(output.effect)
+}
+
+async function execute(effect: CaptureEffect): Promise<void> {
+  const outcome = await runEffect(effect)
+  if (outcome) dispatch({ kind: 'effect-finished', outcome })
+}
+
+async function runEffect(effect: CaptureEffect): Promise<CaptureOutcome | undefined> {
+  switch (effect.kind) {
+    case 'load-configuration':
+      try {
+        const config = await store.load()
+        if (!isConfigurationComplete(config)) {
+          credential = ''
+          return {
+            kind: 'configuration-loaded',
+            result: { kind: 'incomplete' },
+          }
+        }
+        credential = config.credential
+        return {
+          kind: 'configuration-loaded',
+          result: {
+            kind: 'complete',
+            target: { owner: config.owner, repo: config.repo },
+            defaultTags: config.defaultTags,
+          },
+        }
+      } catch {
+        credential = ''
+        return { kind: 'configuration-load-failed' }
+      }
+
+    case 'load-opening-context':
+      try {
+        const repo = { ...effect.target, credential }
+        const [page, portalSource] = await Promise.all([
+          readCurrentPage({
+            tabs: chrome.tabs,
+            scripting: chrome.scripting,
+          }),
+          readPortalSource(gateway, repo),
+        ])
+        return { kind: 'opening-context-loaded', page, portalSource }
+      } catch {
+        return { kind: 'opening-context-load-failed' }
+      }
+
+    case 'reload-portal-source':
+      try {
+        return {
+          kind: 'portal-source-reloaded',
+          portalSource: await readPortalSource(gateway, {
+            ...effect.target,
+            credential,
+          }),
+        }
+      } catch {
+        return { kind: 'portal-source-reload-failed' }
+      }
+
+    case 'write-portal-source':
+      try {
+        return {
+          kind: 'portal-source-written',
+          result: await commitPortalSource(
+            gateway,
+            { ...effect.target, credential },
+            effect.intent,
+          ),
+        }
+      } catch {
+        return { kind: 'portal-source-write-failed' }
+      }
+
+    case 'open-options':
+      chrome.runtime.openOptionsPage()
+      return
+    case 'reload-popup':
+      location.reload()
+      return
+  }
+}
+
+function render(view: CaptureView): void {
+  gate.hidden = view.screen !== 'gate'
+  capture.hidden = view.screen !== 'capture'
+  if (view.screen === 'blank') return
+  if (view.screen === 'gate') {
+    gateMessage.textContent = view.message
+    goOptions.textContent = view.actionLabel
     return
   }
-  if (!isConfigurationComplete(config)) {
-    gate.hidden = false
-    return
-  }
 
-  portalRepo = {
-    owner: config.owner,
-    repo: config.repo,
-    credential: config.credential,
-  }
-  capture.hidden = false
-  setCaptureBusy(true)
-  setStatus('正在读取当前页与门户源…', 'pending')
-  commitTagSelection(
-    createTagSelection({
-      selected: parseDefaultTags(config.defaultTags),
-      catalog: [],
-      prefill: true,
-    }),
-  )
-
-  try {
-    const [page, loaded] = await Promise.all([
-      readCurrentPage({
-        tabs: chrome.tabs,
-        scripting: chrome.scripting,
-      }),
-      readPortalSource(gateway, portalRepo),
-    ])
-    openingUrl = page.url
-    titleInput.value = page.title
-    urlInput.value = page.url
-    if (page.favIconUrl) {
-      const icon = document.createElement('img')
-      icon.alt = ''
-      icon.src = page.favIconUrl
-      faviconSlot.hidden = false
-      icon.addEventListener('error', () => {
-        icon.remove()
-        faviconSlot.hidden = true
-      })
-      faviconSlot.append(icon)
-    }
-    if (!loaded.ok) {
-      bindDescription(page.description)
-      showReadError(loaded.error, loaded.kind)
-      return
-    }
-    bindCatalog(loaded.catalog, page.description)
-    setStatus('门户源已读取', 'ok')
-  } catch {
-    showReadError('无法读取当前页或门户源', 'retry')
-  } finally {
-    setCaptureBusy(false)
-  }
+  captureGrid.setAttribute('aria-busy', String(view.busy))
+  captureGrid.inert = view.busy
+  modeEl.textContent = view.mode
+  renderFavicon(view.faviconUrl)
+  renderField(titleInput, titleError, view.title)
+  renderField(urlInput, urlError, view.url)
+  setValue(descriptionInput, view.description.value)
+  descLine.textContent = view.description.summary
+  descLine.hidden = view.description.expanded
+  descriptionInput.hidden = !view.description.expanded
+  renderTags(view)
+  saveButton.textContent = view.save.label
+  saveButton.disabled = view.save.disabled
+  deleteButton.hidden = !view.delete.visible
+  deleteButton.disabled = view.delete.disabled
+  statusMessage.textContent = view.status.text
+  statusEl.dataset.state = view.status.state
+  statusAction.textContent = view.status.actionLabel
+  statusAction.hidden = view.status.actionLabel === ''
 }
 
-async function retryRead(): Promise<void> {
-  if (!portalRepo || busy) return
-  busy = true
-  setCaptureBusy(true)
-  syncActions()
-  setStatus('正在重新读取门户源…', 'pending')
-  try {
-    const loaded = await readPortalSource(gateway, portalRepo)
-    if (!loaded.ok) {
-      showReadError(loaded.error, loaded.kind)
-      return
-    }
-    bindCatalog(loaded.catalog)
-    setStatus('门户源已读取', 'ok')
-  } catch {
-    showReadError('无法读取门户源', 'retry')
-  } finally {
-    busy = false
-    setCaptureBusy(false)
-    syncActions()
-  }
-}
-
-async function onSave(): Promise<void> {
-  if (tagSelection.selected.length === 0) return
-  const description = descriptionInput.value.trim()
-  const draft = {
-    title: titleInput.value,
-    url: urlInput.value,
-    tags: tagSelection.selected,
-    ...(description ? { description } : {}),
-  }
-  const updating = boundUrl !== null
-  const restoring = deleted
-  await writePortal(
-    boundUrl
-      ? { kind: 'update', boundUrl, draft }
-      : { kind: 'capture', draft },
-    (result) => {
-      bindSlot(result.url)
-      setStatus(
-        updating ? '已改写到门户源' : restoring ? '已恢复到门户源' : '已收录到门户源',
-        'success',
-      )
-    },
-  )
-}
-
-async function onDelete(): Promise<void> {
-  if (boundUrl === null) return
-  await writePortal({ kind: 'delete', boundUrl }, () => {
-    unbindSlot()
-    setStatus('已从门户源删除，可恢复', 'success')
-  })
-}
-
-async function writePortal(
-  intent: PortalSourceIntent,
-  onOk: (result: Extract<CommitResult, { ok: true }>) => void,
-): Promise<void> {
-  if (!portalRepo || !catalogReady || busy) return
-  const repo = portalRepo
-  busy = true
-  setCaptureBusy(true)
-  syncActions()
-  setStatus(
-    intent.kind === 'delete' ? '正在删除…' : deleted ? '正在恢复…' : '正在写入门户源…',
-    'pending',
-  )
-  try {
-    const result = await commitPortalSource(gateway, repo, intent)
-    if (result.ok) onOk(result)
-    else {
-      showWriteError(
-        result.error,
-        result.kind,
-        intent.kind === 'delete' ? onDelete : onSave,
-      )
-    }
-  } catch {
-    showWriteError('写入失败', 'retry', intent.kind === 'delete' ? onDelete : onSave)
-  } finally {
-    busy = false
-    setCaptureBusy(false)
-    syncActions()
-  }
-}
-
-function setCaptureBusy(value: boolean): void {
-  captureGrid.setAttribute('aria-busy', String(value))
-  captureGrid.inert = value
-}
-
-function syncActions(): void {
-  saveButton.disabled = !catalogReady || busy || tagSelection.selected.length === 0
-  deleteButton.disabled = !catalogReady || busy
-}
-
-function setStatus(
-  text: string,
-  state: 'ok' | 'error' | 'pending' | 'success',
-  action?: { label: '去选项' | '重试'; run: () => void },
-): void {
-  statusMessage.textContent = text
-  statusEl.dataset.state = state
-  recover = action?.run ?? null
-  statusAction.textContent = action?.label ?? ''
-  statusAction.hidden = action == null
-}
-
-function validateDraft(): boolean {
-  titleInput.setCustomValidity(titleInput.value.trim() ? '' : '请输入标题')
-  let validUrl = false
-  try {
-    const url = new URL(urlInput.value)
-    validUrl = url.protocol === 'http:' || url.protocol === 'https:'
-  } catch {
-    // Native validation displays the recovery text below.
-  }
-  urlInput.setCustomValidity(validUrl ? '' : '请输入 http(s) 地址')
-  return capture.reportValidity()
-}
-
-function setFieldError(
+function renderField(
   input: HTMLInputElement,
-  messageEl: HTMLElement,
-  message: string,
+  message: HTMLElement,
+  field: { value: string; error: string; customValidity: string },
 ): void {
-  input.setAttribute('aria-invalid', 'true')
-  messageEl.textContent = message
-  messageEl.hidden = false
+  setValue(input, field.value)
+  input.setCustomValidity(field.customValidity)
+  renderError(input, message, field.error)
 }
 
-function clearFieldError(input: HTMLInputElement, messageEl: HTMLElement): void {
-  input.removeAttribute('aria-invalid')
-  messageEl.textContent = ''
-  messageEl.hidden = true
-}
-
-function showReadError(error: string, kind: PortalFailureKind): void {
-  if (kind === 'source') {
-    setStatus(`错误：${error}，请先修复 public/portal.json`, 'error')
-    return
-  }
-  setStatus(
-    `错误：${error}`,
-    'error',
-    kind === 'settings'
-      ? { label: '去选项', run: openOptions }
-      : { label: '重试', run: () => void retryRead() },
-  )
-}
-
-function showWriteError(
-  error: string,
-  kind: PortalFailureKind,
-  retry: () => Promise<void>,
-): void {
-  if (kind === 'title') {
-    setFieldError(titleInput, titleError, `错误：${error}，请修改标题`)
-    setStatus('未写入，请修改标题', 'error')
-    titleInput.focus()
-    return
-  }
-  if (kind === 'url') {
-    setFieldError(urlInput, urlError, `错误：${error}，请修改 URL`)
-    setStatus('未写入，请修改 URL', 'error')
-    urlInput.focus()
-    return
-  }
-  if (kind === 'tags') {
-    tagError.textContent = `错误：${error}`
-    tagError.hidden = false
-    setStatus('未写入，请添加标签', 'error')
-    tagAdd.focus()
-    return
-  }
-  if (kind === 'source') {
-    setStatus(`错误：${error}，请先修复 public/portal.json`, 'error')
-    return
-  }
-  setStatus(
-    `错误：${error}`,
-    'error',
-    kind === 'settings'
-      ? { label: '去选项', run: openOptions }
-      : { label: '重试', run: () => void retry() },
-  )
-}
-
-function commitTagSelection(next: TagSelection): void {
-  tagSelection = next
-  if (next.selected.length > 0) {
-    tagError.textContent = ''
-    tagError.hidden = true
-  }
-  renderSelectedTags()
-  if (!tagMenu.hidden && tagCreate.hidden) renderTagChoices()
-  syncActions()
-}
-
-function renderSelectedTags(): void {
+function renderTags(view: Extract<CaptureView, { screen: 'capture' }>): void {
   tagsEl.replaceChildren()
-  for (const name of tagSelection.selected) {
+  for (const name of view.tags.selected) {
     const item = document.createElement('li')
     const button = document.createElement('button')
+    const removeMark = document.createElement('span')
     button.type = 'button'
     button.className = 'tag'
-    const removeMark = document.createElement('span')
+    button.setAttribute('aria-label', `去掉 ${name}`)
     removeMark.className = 'tag-remove'
     removeMark.setAttribute('aria-hidden', 'true')
     button.append(name, removeMark)
-    button.setAttribute('aria-label', `去掉 ${name}`)
     button.addEventListener('click', () => {
-      const next = removeTag(tagSelection, name)
-      commitTagSelection(next)
-      if (next.selected.length === 0) {
-        tagError.textContent = '错误：至少保留一个标签'
-        tagError.hidden = false
-        tagAdd.focus()
-      }
+      dispatch({ kind: 'remove-tag', name })
     })
     item.append(button)
     tagsEl.append(item)
   }
-}
 
-function renderTagChoices(): void {
   tagChoices.replaceChildren()
-  for (const tag of availableTags(tagSelection)) {
+  for (const tag of view.tags.choices) {
     const item = document.createElement('li')
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'tag-choice'
     button.textContent = tag.name
     button.addEventListener('click', () => {
-      commitTagSelection(addTag(tagSelection, tag.name))
-      closeTagMenu(true)
+      dispatch({ kind: 'select-tag', name: tag.name })
     })
     item.append(button)
     tagChoices.append(item)
   }
+
+  const menu = view.tags.menu
+  tagMenu.hidden = menu === 'closed'
+  tagChoices.hidden = menu !== 'choices'
+  tagCreateOpen.hidden = menu !== 'choices'
+  tagCreate.hidden = menu !== 'create'
+  tagAdd.setAttribute('aria-expanded', menu === 'closed' ? 'false' : 'true')
+  setValue(tagCreateName, view.tags.newName)
+  renderError(tagCreateName, tagCreateError, view.tags.newNameError)
+  tagError.textContent = view.tags.error
+  tagError.hidden = view.tags.error === ''
 }
 
-function setTagMenu(mode: 'closed' | 'choices' | 'create'): void {
-  tagMenu.hidden = mode === 'closed'
-  tagChoices.hidden = mode !== 'choices'
-  tagCreateOpen.hidden = mode !== 'choices'
-  tagCreate.hidden = mode !== 'create'
-  tagAdd.setAttribute('aria-expanded', mode === 'closed' ? 'false' : 'true')
-  if (mode !== 'create') tagCreateName.value = ''
+function renderError(
+  input: HTMLInputElement,
+  message: HTMLElement,
+  error: string,
+): void {
+  input.toggleAttribute('aria-invalid', error !== '')
+  message.textContent = error
+  message.hidden = error === ''
 }
 
-function openTagMenu(): void {
-  setTagMenu('choices')
-  commitTagSelection(revealChoices(tagSelection))
-  const firstChoice = tagChoices.querySelector('button') ?? tagCreateOpen
-  firstChoice.focus()
+function setValue(
+  input: HTMLInputElement | HTMLTextAreaElement,
+  value: string,
+): void {
+  if (input.value !== value) input.value = value
 }
 
-function showTagCreate(): void {
-  setTagMenu('create')
-  commitTagSelection(revealChoices(tagSelection))
-  tagCreateName.focus()
-}
-
-function confirmNewTag(): void {
-  if (!normalizeTag(tagCreateName.value)) {
-    setFieldError(tagCreateName, tagCreateError, '错误：请输入标签名字')
-    tagCreateName.focus()
+function renderFavicon(url: string): void {
+  if (url === renderedFaviconUrl) return
+  renderedFaviconUrl = url
+  faviconSlot.replaceChildren()
+  if (!url || url === failedFaviconUrl) {
+    faviconSlot.hidden = true
     return
   }
-  clearFieldError(tagCreateName, tagCreateError)
-  commitTagSelection(addTag(tagSelection, tagCreateName.value))
-  closeTagMenu(true)
+
+  const icon = document.createElement('img')
+  icon.alt = ''
+  icon.src = url
+  icon.addEventListener('error', () => {
+    failedFaviconUrl = url
+    icon.remove()
+    faviconSlot.hidden = true
+  })
+  faviconSlot.hidden = false
+  faviconSlot.append(icon)
 }
 
-function closeTagMenu(restoreFocus = false): void {
-  setTagMenu('closed')
-  if (restoreFocus) tagAdd.focus()
-}
-
-function bindSlot(url: string): void {
-  boundUrl = url
-  tagSelection = { ...tagSelection, prefill: false }
-  deleted = false
-  modeEl.textContent = '改写'
-  deleteButton.hidden = false
-  saveButton.textContent = '保存'
-}
-
-function bindCatalog(catalog: Catalog, initialDescription?: string): void {
-  const bound = findBoundEntry(catalog, openingUrl)
-  catalogReady = true
-  if (bound) {
-    bindSlot(bound.url)
-    titleInput.value = bound.title
-    urlInput.value = bound.url
-    bindDescription(bound.description ?? '')
-    commitTagSelection(createTagSelection({ selected: bound.tags, catalog: catalog.tags }))
+function focus(target: FocusTarget): void {
+  const elementByTarget: Record<Exclude<FocusTarget, 'first-tag-choice-or-create'>, HTMLElement> = {
+    description: descriptionInput,
+    'new-tag': tagCreateName,
+    'tag-add': tagAdd,
+    title: titleInput,
+    url: urlInput,
+  }
+  if (target === 'first-tag-choice-or-create') {
+    ;(tagChoices.querySelector('button') ?? tagCreateOpen).focus()
     return
   }
-  if (initialDescription !== undefined) bindDescription(initialDescription)
-  commitTagSelection(withCatalog(tagSelection, catalog.tags))
-}
-
-function unbindSlot(): void {
-  boundUrl = null
-  deleted = true
-  modeEl.textContent = '收录'
-  deleteButton.hidden = true
-  saveButton.textContent = '恢复'
-}
-
-function bindDescription(initial: string): void {
-  descriptionInput.value = initial
-  descLine.textContent = initial || '添加描述'
+  elementByTarget[target].focus()
 }
